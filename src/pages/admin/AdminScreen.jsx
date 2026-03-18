@@ -1,22 +1,28 @@
 import React, { useState, useEffect } from 'react'
-import { get, rpc, update } from '../../config/supabase.js'
+import { query, update } from '../../config/supabase.js'
 import Icon from '../../components/Icon.jsx'
-import Modal from '../../components/Modal.jsx'
 import UserFormModal from './UserFormModal.jsx'
 import { GerenciaBadge } from '../../gerencia/GerenciaUI.jsx'
+import { isAdminGeral, nomePerfil } from '../../gerencia/gerencia.js'
 
 export default function AdminScreen({ usuario, mostrarToast }) {
   const [usuarios, setUsuarios] = useState([])
   const [carregando, setCarregando] = useState(true)
   const [modalNovo, setModalNovo] = useState(false)
   const [editando, setEditando] = useState(null)
+  const [filtroGerencia, setFiltroGerencia] = useState(isAdminGeral(usuario) ? '' : usuario.gerencia)
 
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
     try {
-      const dados = await get('usuarios')
-      setUsuarios(dados.sort((a, b) => a.name.localeCompare(b.name)))
+      const dados = await query('usuarios', q => {
+        let qr = q.order('name')
+        // Gerência só vê usuários do próprio módulo
+        if (!isAdminGeral(usuario)) qr = qr.eq('gerencia', usuario.gerencia)
+        return qr
+      })
+      setUsuarios(dados)
     } catch {
       mostrarToast('Erro ao carregar usuários', 'erro')
     } finally {
@@ -24,17 +30,24 @@ export default function AdminScreen({ usuario, mostrarToast }) {
     }
   }
 
-  async function toggleAtivo(user) {
+  async function toggleAtivo(u) {
     try {
-      await update('usuarios', user.id, { ativo: !user.ativo })
-      mostrarToast(`Usuário ${user.ativo ? 'desativado' : 'ativado'}`, 'sucesso')
+      await update('usuarios', u.id, { ativo: !u.ativo })
+      mostrarToast(`Usuário ${u.ativo ? 'desativado' : 'ativado'}`, 'sucesso')
       carregar()
     } catch {
-      mostrarToast('Erro ao atualizar usuário', 'erro')
+      mostrarToast('Erro ao atualizar', 'erro')
     }
   }
 
-  const ROLES = { fiscal: 'Fiscal', atendente: 'Balcão', admin: 'Gerência' }
+  const filtrados = filtroGerencia
+    ? usuarios.filter(u => u.gerencia === filtroGerencia)
+    : usuarios
+
+  const CORES_PERFIL = {
+    gerencia: '#7E22CE', fiscal: '#1A56DB', balcao: '#166534',
+    administracao: '#B45309', admin: '#B45309',
+  }
 
   return (
     <div style={{ padding: '16px' }}>
@@ -46,15 +59,33 @@ export default function AdminScreen({ usuario, mostrarToast }) {
           display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
         }}>
           <Icon name="plus" size={16} color="#fff" />
-          Novo
+          Novo usuário
         </button>
+      </div>
+
+      {/* Filtro de gerência — só admin geral vê */}
+      {isAdminGeral(usuario) && (
+        <select value={filtroGerencia} onChange={e => setFiltroGerencia(e.target.value)} style={{ marginBottom: '16px', fontSize: '0.85rem' }}>
+          <option value="">Todas as gerências</option>
+          <option value="obras">🏗️ Obras</option>
+          <option value="posturas">🏪 Posturas</option>
+          <option value="admin_geral">🏛️ Admin Geral</option>
+        </select>
+      )}
+
+      <div style={{ fontSize: '0.75rem', color: '#94A3B8', marginBottom: '10px' }}>
+        {filtrados.length} usuário{filtrados.length !== 1 ? 's' : ''}
       </div>
 
       {carregando ? (
         <p style={{ color: '#94A3B8', textAlign: 'center', padding: '32px' }}>Carregando...</p>
+      ) : filtrados.length === 0 ? (
+        <div style={{ background: '#fff', border: '2px dashed #E2E8F0', borderRadius: '14px', padding: '32px', textAlign: 'center', color: '#94A3B8' }}>
+          Nenhum usuário encontrado
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {usuarios.map(u => (
+          {filtrados.map(u => (
             <div key={u.id} style={{
               background: u.ativo ? '#fff' : '#F8FAFC',
               border: '2px solid #E2E8F0',
@@ -66,10 +97,22 @@ export default function AdminScreen({ usuario, mostrarToast }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: '700', fontSize: '0.9rem', color: '#1E293B' }}>{u.name}</div>
                   <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '2px' }}>
-                    Mat. {u.matricula} • {ROLES[u.role] || u.role}
+                    Mat. {u.matricula}
                   </div>
-                  <div style={{ marginTop: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                     <GerenciaBadge gerencia={u.gerencia} />
+                    <span style={{
+                      background: `${CORES_PERFIL[u.role] || '#6B7280'}18`,
+                      color: CORES_PERFIL[u.role] || '#6B7280',
+                      fontSize: '0.68rem', fontWeight: '700',
+                      borderRadius: '999px', padding: '2px 10px',
+                      border: `1px solid ${CORES_PERFIL[u.role] || '#6B7280'}33`,
+                    }}>
+                      {nomePerfil(u)}
+                    </span>
+                    {!u.ativo && (
+                      <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontStyle: 'italic' }}>inativo</span>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -94,7 +137,8 @@ export default function AdminScreen({ usuario, mostrarToast }) {
       <UserFormModal
         aberto={modalNovo || !!editando}
         onClose={() => { setModalNovo(false); setEditando(null) }}
-        usuario={editando}
+        usuarioEditando={editando}
+        usuarioLogado={usuario}
         onSalvo={() => { setModalNovo(false); setEditando(null); carregar() }}
         mostrarToast={mostrarToast}
       />
