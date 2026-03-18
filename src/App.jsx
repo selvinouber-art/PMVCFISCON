@@ -3,9 +3,9 @@ import { loadSession, clearSession, startActivityTracking } from './auth/auth.js
 import Login from './auth/Login.jsx'
 import TopBar from './components/TopBar.jsx'
 import BottomNav from './components/BottomNav.jsx'
+import Sidebar from './components/Sidebar.jsx'
 import Toast from './components/Toast.jsx'
 import { GerenciaHeader } from './gerencia/GerenciaUI.jsx'
-import { podeEmitirDocumentos, podeRegistrarReclamacoes } from './gerencia/gerencia.js'
 
 // Páginas
 import Dashboard from './pages/Dashboard.jsx'
@@ -22,7 +22,7 @@ import MaisScreen from './pages/MaisScreen.jsx'
 
 export default function App() {
   const [usuario, setUsuario] = useState(null)
-  const [pagina, setPagina] = useState('dashboard')
+  const [pagina, setPaginaState] = useState('dashboard')
   const [paginaParams, setPaginaParams] = useState(null)
   const [toast, setToast] = useState(null)
   const [carregando, setCarregando] = useState(true)
@@ -44,7 +44,7 @@ export default function App() {
   }
 
   function navegar(pag, params = null) {
-    setPagina(pag)
+    setPaginaState(pag)
     setPaginaParams(params)
     window.scrollTo(0, 0)
   }
@@ -74,6 +74,7 @@ export default function App() {
   if (!usuario) return <Login onLogin={handleLogin} />
 
   const props = { usuario, mostrarToast, setPagina: navegar }
+  const abas = getAbasNav(usuario)
 
   function renderPagina() {
     switch (pagina) {
@@ -83,7 +84,7 @@ export default function App() {
       case 'reclamacoes':      return <ReclamacoesScreen {...props} />
       case 'nova-reclamacao':  return <NovaReclamacao {...props} />
       case 'defesas':          return <DefesasScreen {...props} />
-      case 'nova-notificacao': return <FormNotificacao {...props} />
+      case 'nova-notificacao': return <FormNotificacao {...props} params={paginaParams} />
       case 'novo-auto':        return <FormAutoInfracao {...props} notificacao={paginaParams} />
       case 'admin':            return <AdminScreen {...props} />
       case 'perfil':           return <PerfilModal {...props} />
@@ -92,18 +93,35 @@ export default function App() {
     }
   }
 
-  // Abas do BottomNav variam conforme o perfil
-  const abasPorPerfil = getAbasNav(usuario)
-
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#F1F5F9' }}>
-      <TopBar usuario={usuario} onPerfil={() => navegar('perfil')} onLogout={handleLogout} />
-      <GerenciaHeader gerencia={usuario.gerencia} />
-      <main style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
-        {renderPagina()}
-      </main>
-      <BottomNav ativo={pagina} onNavegar={navegar} abas={abasPorPerfil} />
-      {toast && <Toast mensagem={toast.mensagem} tipo={toast.tipo} onClose={() => setToast(null)} />}
+    <div className="fiscon-layout">
+      {/* SIDEBAR — desktop apenas */}
+      <div className="fiscon-sidebar">
+        <Sidebar usuario={usuario} paginaAtiva={pagina} onNavegar={navegar} onLogout={handleLogout} />
+      </div>
+
+      {/* ÁREA PRINCIPAL */}
+      <div className="fiscon-main-area">
+        {/* TopBar — mobile e desktop */}
+        <div className="fiscon-topbar">
+          <TopBar usuario={usuario} onPerfil={() => navegar('perfil')} onLogout={handleLogout} />
+          <GerenciaHeader gerencia={usuario.gerencia} />
+        </div>
+
+        {/* Conteúdo da página */}
+        <div className="fiscon-content">
+          {renderPagina()}
+        </div>
+      </div>
+
+      {/* BOTTOM NAV — mobile apenas */}
+      <div className="fiscon-bottom-nav">
+        <BottomNav ativo={pagina} onNavegar={navegar} abas={abas} />
+      </div>
+
+      {toast && (
+        <Toast mensagem={toast.mensagem} tipo={toast.tipo} onClose={() => setToast(null)} />
+      )}
     </div>
   )
 }
@@ -112,50 +130,37 @@ function getAbasNav(usuario) {
   const role = usuario?.role
   const base = [{ id: 'dashboard', label: 'Início', icone: 'home' }]
 
-  if (role === 'fiscal') {
-    return [
-      ...base,
-      { id: 'registros',   label: 'Registros',   icone: 'file' },
-      { id: 'reclamacoes', label: 'Reclamações',  icone: 'phone' },
-      { id: 'prazos',      label: 'Prazos',       icone: 'clock' },
-      { id: 'mais',        label: 'Mais',         icone: 'settings' },
-    ]
-  }
-
-  if (role === 'balcao') {
-    return [
-      ...base,
-      { id: 'reclamacoes',     label: 'Reclamações', icone: 'phone' },
-      { id: 'nova-reclamacao', label: 'Nova',        icone: 'plus' },
-      { id: 'mais',            label: 'Mais',        icone: 'settings' },
-    ]
-  }
-
-  if (role === 'administracao') {
-    return [
-      ...base,
-      { id: 'registros',   label: 'Registros',   icone: 'file' },
-      { id: 'reclamacoes', label: 'Reclamações',  icone: 'phone' },
-      { id: 'mais',        label: 'Mais',         icone: 'settings' },
-    ]
-  }
-
-  if (role === 'gerencia') {
-    return [
-      ...base,
-      { id: 'registros',   label: 'Registros',  icone: 'file' },
-      { id: 'reclamacoes', label: 'Reclamações', icone: 'phone' },
-      { id: 'defesas',     label: 'Defesas',     icone: 'shield' },
-      { id: 'mais',        label: 'Mais',        icone: 'settings' },
-    ]
-  }
-
-  // Admin geral
+  if (role === 'fiscal') return [
+    ...base,
+    { id: 'registros',   label: 'Registros',  icone: 'file' },
+    { id: 'reclamacoes', label: 'Reclamações', icone: 'phone' },
+    { id: 'prazos',      label: 'Prazos',      icone: 'clock' },
+    { id: 'mais',        label: 'Mais',        icone: 'settings' },
+  ]
+  if (role === 'balcao') return [
+    ...base,
+    { id: 'reclamacoes',     label: 'Reclamações', icone: 'phone' },
+    { id: 'nova-reclamacao', label: 'Nova',         icone: 'plus' },
+    { id: 'mais',            label: 'Mais',         icone: 'settings' },
+  ]
+  if (role === 'administracao') return [
+    ...base,
+    { id: 'registros',   label: 'Registros',  icone: 'file' },
+    { id: 'reclamacoes', label: 'Reclamações', icone: 'phone' },
+    { id: 'mais',        label: 'Mais',        icone: 'settings' },
+  ]
+  if (role === 'gerencia') return [
+    ...base,
+    { id: 'registros',   label: 'Registros',  icone: 'file' },
+    { id: 'reclamacoes', label: 'Reclamações', icone: 'phone' },
+    { id: 'defesas',     label: 'Defesas',     icone: 'shield' },
+    { id: 'mais',        label: 'Mais',        icone: 'settings' },
+  ]
   return [
     ...base,
     { id: 'registros',   label: 'Registros',  icone: 'file' },
     { id: 'reclamacoes', label: 'Reclamações', icone: 'phone' },
     { id: 'admin',       label: 'Usuários',   icone: 'users' },
-    { id: 'mais',        label: 'Mais',       icone: 'settings' },
+    { id: 'mais',        label: 'Mais',        icone: 'settings' },
   ]
 }
