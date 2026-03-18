@@ -1,61 +1,57 @@
 import React, { useState, useEffect } from 'react'
-import { rpc, get } from '../../config/supabase.js'
+import { rpc } from '../../config/supabase.js'
 import Modal from '../../components/Modal.jsx'
-import { GerenciaSelector, FuncaoSelector } from '../../gerencia/GerenciaUI.jsx'
+import { isAdminGeral, getPerfisGerencia } from '../../gerencia/gerencia.js'
+import { GERENCIAS } from '../../gerencia/gerencia.js'
 
-export default function UserFormModal({ aberto, onClose, usuario, onSalvo, mostrarToast }) {
-  const [form, setForm] = useState({
-    name: '', matricula: '', senha: '', role: '', gerencia: '',
-    email: '', telefone: '',
-  })
-  const [funcoes, setFuncoes] = useState([])
+export default function UserFormModal({ aberto, onClose, usuarioEditando, usuarioLogado, onSalvo, mostrarToast }) {
+  const [form, setForm] = useState({ name: '', matricula: '', senha: '', role: '', gerencia: '', email: '', telefone: '' })
+  const [perfis, setPerfis] = useState([])
   const [salvando, setSalvando] = useState(false)
 
-  useEffect(() => {
-    if (usuario) {
-      setForm({ ...usuario, senha: '' })
-      carregarFuncoes(usuario.gerencia)
-    } else {
-      setForm({ name: '', matricula: '', senha: '', role: '', gerencia: '', email: '', telefone: '' })
-      setFuncoes([])
-    }
-  }, [usuario, aberto])
+  // Gerências disponíveis para o usuário logado criar
+  const gerenciasDisponiveis = isAdminGeral(usuarioLogado)
+    ? Object.values(GERENCIAS)
+    : [GERENCIAS[usuarioLogado.gerencia]].filter(Boolean)
 
-  async function carregarFuncoes(gerencia) {
-    if (!gerencia) { setFuncoes([]); return }
-    try {
-      const dados = await get('funcoes_gerencia', { gerencia, ativo: true })
-      setFuncoes(dados.sort((a, b) => a.ordem - b.ordem))
-    } catch {
-      setFuncoes([])
+  useEffect(() => {
+    if (!aberto) return
+    if (usuarioEditando) {
+      setForm({ ...usuarioEditando, senha: '' })
+      setPerfis(getPerfisGerencia(usuarioEditando.gerencia))
+    } else {
+      // Pré-seleciona a gerência se só houver uma
+      const gerenciaInicial = !isAdminGeral(usuarioLogado) ? usuarioLogado.gerencia : ''
+      setForm({ name: '', matricula: '', senha: '', role: '', gerencia: gerenciaInicial, email: '', telefone: '' })
+      setPerfis(gerenciaInicial ? getPerfisGerencia(gerenciaInicial) : [])
     }
-  }
+  }, [aberto, usuarioEditando])
 
   function set(campo, valor) {
     setForm(f => ({ ...f, [campo]: valor }))
   }
 
-  async function handleGerenciaChange(gerencia) {
+  function handleGerencia(gerencia) {
     set('gerencia', gerencia)
     set('role', '')
-    await carregarFuncoes(gerencia)
+    setPerfis(getPerfisGerencia(gerencia))
   }
 
   async function salvar() {
     if (!form.name || !form.matricula || !form.gerencia || !form.role) {
-      mostrarToast('Preencha todos os campos obrigatórios', 'erro')
+      mostrarToast('Preencha nome, matrícula, gerência e perfil', 'erro')
       return
     }
-    if (!usuario && !form.senha) {
-      mostrarToast('Informe a senha para o novo usuário', 'erro')
+    if (!usuarioEditando && !form.senha) {
+      mostrarToast('Informe a senha inicial', 'erro')
       return
     }
     setSalvando(true)
     try {
-      await rpc('criar_usuario_seguro', {
-        p_id: usuario?.id || `user-${Date.now()}`,
-        p_name: form.name,
-        p_matricula: form.matricula,
+      const resultado = await rpc('criar_usuario_seguro', {
+        p_id: usuarioEditando?.id || `user-${Date.now()}`,
+        p_name: form.name.trim(),
+        p_matricula: form.matricula.trim(),
         p_senha: form.senha || '__manter__',
         p_role: form.role,
         p_email: form.email || '',
@@ -65,44 +61,102 @@ export default function UserFormModal({ aberto, onClose, usuario, onSalvo, mostr
         p_ativo: true,
         p_gerencia: form.gerencia,
       })
-      mostrarToast(usuario ? 'Usuário atualizado!' : 'Usuário criado!', 'sucesso')
+      if (!resultado?.success) throw new Error('Falha ao salvar')
+      mostrarToast(usuarioEditando ? 'Usuário atualizado!' : 'Usuário criado!', 'sucesso')
       onSalvo()
     } catch (err) {
       console.error(err)
-      mostrarToast('Erro ao salvar usuário', 'erro')
+      mostrarToast('Erro ao salvar. Verifique se a matrícula já existe.', 'erro')
     } finally {
       setSalvando(false)
     }
   }
 
   return (
-    <Modal aberto={aberto} onClose={onClose} titulo={usuario ? 'Editar Usuário' : 'Novo Usuário'}>
+    <Modal aberto={aberto} onClose={onClose} titulo={usuarioEditando ? 'Editar Usuário' : 'Novo Usuário'}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
         <Campo label="Nome completo *">
           <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Nome do servidor" />
         </Campo>
+
         <Campo label="Matrícula *">
           <input value={form.matricula} onChange={e => set('matricula', e.target.value)} placeholder="Ex: 12345" />
         </Campo>
 
-        <GerenciaSelector value={form.gerencia} onChange={handleGerenciaChange} />
-        <FuncaoSelector value={form.role} onChange={v => set('role', v)} funcoes={funcoes} />
+        {/* Passo 1: Gerência */}
+        <Campo label="Módulo / Gerência *">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {gerenciasDisponiveis.map(g => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => handleGerencia(g.id)}
+                style={{
+                  background: form.gerencia === g.id ? g.fundo : '#fff',
+                  border: `2px solid ${form.gerencia === g.id ? g.cor : '#E2E8F0'}`,
+                  borderRadius: '10px', padding: '12px 14px',
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <span style={{ fontSize: '1.2rem' }}>{g.emoji}</span>
+                <div>
+                  <div style={{ fontWeight: '600', fontSize: '0.88rem', color: form.gerencia === g.id ? g.cor : '#374151' }}>{g.nome}</div>
+                  {g.lei && <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>{g.lei}</div>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </Campo>
 
-        <Campo label={usuario ? 'Nova senha (deixe em branco para manter)' : 'Senha *'}>
+        {/* Passo 2: Perfil (só aparece depois de escolher gerência) */}
+        {form.gerencia && perfis.length > 0 && (
+          <Campo label="Perfil de acesso *">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {perfis.map(p => (
+                <button
+                  key={p.codigo}
+                  type="button"
+                  onClick={() => set('role', p.codigo)}
+                  style={{
+                    background: form.role === p.codigo ? p.fundo : '#fff',
+                    border: `2px solid ${form.role === p.codigo ? p.cor : '#E2E8F0'}`,
+                    borderRadius: '10px', padding: '10px 14px',
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <div style={{
+                    width: '10px', height: '10px', borderRadius: '50%',
+                    background: p.cor, flexShrink: 0,
+                  }} />
+                  <span style={{ fontWeight: '600', fontSize: '0.88rem', color: form.role === p.codigo ? p.cor : '#374151' }}>
+                    {p.nome}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Campo>
+        )}
+
+        <Campo label={usuarioEditando ? 'Nova senha (em branco = manter atual)' : 'Senha inicial *'}>
           <input type="password" value={form.senha} onChange={e => set('senha', e.target.value)} placeholder="••••••••" />
         </Campo>
+
         <Campo label="E-mail">
-          <input type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+          <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="servidor@pmvc.ba.gov.br" />
         </Campo>
+
         <Campo label="Telefone">
-          <input value={form.telefone} onChange={e => set('telefone', e.target.value)} />
+          <input value={form.telefone} onChange={e => set('telefone', e.target.value)} placeholder="(77) 99999-9999" />
         </Campo>
 
         <button onClick={salvar} disabled={salvando} style={{
           background: '#1A56DB', color: '#fff', border: 'none', borderRadius: '10px',
           padding: '14px', fontWeight: '700', fontSize: '0.95rem', cursor: 'pointer', marginTop: '4px',
         }}>
-          {salvando ? 'Salvando...' : 'Salvar'}
+          {salvando ? 'Salvando...' : (usuarioEditando ? 'Atualizar Usuário' : 'Criar Usuário')}
         </button>
       </div>
     </Modal>
