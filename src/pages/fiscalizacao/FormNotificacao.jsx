@@ -7,16 +7,21 @@ import InfracoesObras from './InfracoesObras.jsx'
 import InfracoesPosturas from './InfracoesPosturas.jsx'
 import Icon from '../../components/Icon.jsx'
 import { PRAZOS_NOTIFICACAO, calcularDataVencimento } from '../../config/constants.js'
-import { imprimirDocumentoOficial } from '../../impressao/DocumentoPDF.jsx'
+import { INFO_MODULO } from '../../gerencia/GerenciaUI.jsx'
 
 export default function FormNotificacao({ usuario, mostrarToast, setPagina, params }) {
+  // Pré-preenche endereço da reclamação, mas NÃO a descrição
   const fromRec = params?.fromReclamacao
 
   const [form, setForm] = useState({
-    owner: fromRec?.reclamado || '', cpf: '',
-    addr: fromRec?.endereco || '', bairro: fromRec?.bairro || '',
-    loteamento: '', descricao: fromRec?.descricao || '',
-    prazoDias: '', infracoes: [],
+    owner:      fromRec?.reclamado  || '',
+    cpf:        '',
+    addr:       fromRec?.endereco   || '',
+    bairro:     fromRec?.bairro     || '',
+    loteamento: '',
+    descricao:  '',   // nunca pré-preenchido
+    prazoDias:  '',
+    infracoes:  [],
   })
   const [bairros, setBairros]   = useState([])
   const [fotos, setFotos]       = useState([null, null, null, null])
@@ -27,14 +32,11 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
     if (usuario.gerencia === 'obras') {
       get('bairros', { ativo: true }).then(dados => {
         const lista = (dados || []).sort((a, b) => a.nome.localeCompare(b.nome))
-        const bairrosFiscal = usuario.bairros || []
-        if (bairrosFiscal.length > 0) {
-          const doFiscal = lista.filter(b => bairrosFiscal.includes(b.nome))
-          const outros   = lista.filter(b => !bairrosFiscal.includes(b.nome))
-          setBairros([...doFiscal, ...outros])
-        } else {
-          setBairros(lista)
-        }
+        const bf    = usuario.bairros || []
+        setBairros(bf.length > 0
+          ? [...lista.filter(b => bf.includes(b.nome)), ...lista.filter(b => !bf.includes(b.nome))]
+          : lista
+        )
       }).catch(() => setBairros([]))
     }
   }, [])
@@ -61,10 +63,9 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
     return Object.keys(e).length === 0
   }
 
-  // Salva e retorna o registro salvo (para impressão)
   async function executarSalvar() {
-    const anoAtual = new Date().getFullYear()
-    const prefixo  = usuario.gerencia === 'obras' ? 'NP-OB' : 'NP-PO'
+    const anoAtual  = new Date().getFullYear()
+    const prefixo   = usuario.gerencia === 'obras' ? 'NP-OB' : 'NP-PO'
     const existentes = await query('records', q =>
       q.eq('gerencia', usuario.gerencia).eq('type', 'notif').like('num', `${prefixo}-%/${anoAtual}`)
     )
@@ -72,7 +73,6 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
     const num          = gerarNumDocumento('notif', usuario.gerencia, seq)
     const codigo_acesso = gerarCodigoAcesso()
     const prazoData    = calcularDataVencimento(Number(form.prazoDias))
-    const matFormatada = mascaraMatricula(usuario.matricula)
     const id           = `notif-${Date.now()}`
 
     const registro = {
@@ -90,10 +90,57 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
     await insert('records', registro)
     await insert('logs', {
       gerencia: usuario.gerencia, acao: 'NOVA_NOTIFICACAO',
-      detalhe: `${num} emitida. Prop.: ${form.owner}. End.: ${form.addr}. Infrações: ${form.infracoes.length}. Prazo: ${prazoData}. Fiscal: ${usuario.name} (Mat. ${matFormatada}).`,
+      detalhe: `${num} emitida. Prop.: ${form.owner}. End.: ${form.addr}. Infrações: ${form.infracoes.length}. Prazo: ${prazoData}. Fiscal: ${usuario.name} (Mat. ${mascaraMatricula(usuario.matricula)}).`,
       usuario: usuario.name,
     })
     return registro
+  }
+
+  function imprimirTermica(reg) {
+    const info   = INFO_MODULO[reg.gerencia] || INFO_MODULO.obras
+    const matFmt = mascaraMatricula(reg.matricula || '')
+    const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`https://fiscon.pmvc.ba.gov.br/portal?codigo=${reg.codigo_acesso}`)}`
+    const infracoes = (reg.infracoes || []).map(i => `<div style="margin:2px 0;font-size:10px;">• ${i.descricao}</div>`).join('')
+
+    const html = `<!DOCTYPE html><html><head><title>${reg.num}</title>
+    <style>
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family:'Courier New',monospace; font-size:11px; width:58mm; padding:3mm; background:#fff; }
+      .c { text-align:center; } .l { border-top:1px dashed #000; margin:4px 0; }
+      .b { font-weight:bold; } .p { font-size:9px; }
+      img.br { width:18mm; height:18mm; } img.qr { width:22mm; height:22mm; }
+      @media print { @page { size:58mm auto; margin:0; } }
+    </style></head><body>
+    <div class="c"><img class="br" src="https://upload.wikimedia.org/wikipedia/commons/5/57/Bras%C3%A3o_Vitoria_da_Conquista.svg"/></div>
+    <div class="l"></div>
+    <div class="c b" style="font-size:12px;">NOTIFICAÇÃO PRELIMINAR</div>
+    <div class="c b" style="font-size:13px;letter-spacing:1px;">${reg.num}</div>
+    <div class="c p">Data: ${reg.date}</div>
+    <div class="l"></div>
+    <div class="b">NOTIFICADO:</div>
+    <div>${reg.owner || '—'}</div>
+    ${reg.cpf ? `<div class="p">CPF/CNPJ: ${reg.cpf}</div>` : ''}
+    <div class="p">${reg.addr || '—'}${reg.bairro ? `, ${reg.bairro}` : ''}</div>
+    <div class="l"></div>
+    <div class="b">INFRAÇÕES:</div>
+    ${infracoes}
+    <div class="l"></div>
+    <div class="b">PRAZO: ${reg.prazo || '—'}</div>
+    <div class="l"></div>
+    <div class="c b">${reg.fiscal || '—'}</div>
+    <div class="c p">Mat.: ${matFmt}</div>
+    <div class="l"></div>
+    <div class="c">
+      <div class="p b">Portal do Cidadão:</div>
+      <img class="qr" src="${qrUrl}"/>
+      <div class="p">Código: <span class="b" style="letter-spacing:2px;">${reg.codigo_acesso || '—'}</span></div>
+    </div>
+    </body></html>`
+
+    const win = window.open('', '_blank')
+    win.document.write(html)
+    win.document.close()
+    setTimeout(() => { win.print(); win.close() }, 600)
   }
 
   async function salvar() {
@@ -115,8 +162,7 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
     try {
       const registro = await executarSalvar()
       mostrarToast('Notificação criada! Abrindo impressão...', 'sucesso')
-      // Pequeno delay para o toast aparecer antes da janela de impressão
-      setTimeout(() => imprimirDocumentoOficial(registro), 400)
+      setTimeout(() => imprimirTermica(registro), 400)
       setPagina('registros')
     } catch (err) {
       console.error(err)
@@ -142,7 +188,7 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
 
       {fromRec && (
         <div style={{ background: '#EBF5FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '0.82rem', color: '#1A56DB' }}>
-          📋 Pré-preenchido da reclamação <strong>{fromRec.protocolo}</strong>
+          📋 Pré-preenchido da reclamação <strong>{fromRec.protocolo}</strong> — endereço e nome
         </div>
       )}
 
@@ -167,15 +213,11 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
                 <option value="">Selecione o bairro</option>
                 {(usuario.bairros || []).length > 0 && (
                   <optgroup label="Meus bairros">
-                    {bairros.filter(b => (usuario.bairros || []).includes(b.nome)).map(b => (
-                      <option key={b.id} value={b.nome}>{b.nome}</option>
-                    ))}
+                    {bairros.filter(b => (usuario.bairros || []).includes(b.nome)).map(b => <option key={b.id} value={b.nome}>{b.nome}</option>)}
                   </optgroup>
                 )}
                 <optgroup label="Outros bairros">
-                  {bairros.filter(b => !(usuario.bairros || []).includes(b.nome)).map(b => (
-                    <option key={b.id} value={b.nome}>{b.nome}</option>
-                  ))}
+                  {bairros.filter(b => !(usuario.bairros || []).includes(b.nome)).map(b => <option key={b.id} value={b.nome}>{b.nome}</option>)}
                 </optgroup>
               </select>
             ) : (
@@ -190,11 +232,7 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
         </Secao>
 
         <Secao titulo="Infrações *">
-          {erros.infracoes && (
-            <div style={{ background: '#FEE2E2', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#B91C1C' }}>
-              {erros.infracoes}
-            </div>
-          )}
+          {erros.infracoes && <div style={{ background: '#FEE2E2', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#B91C1C' }}>{erros.infracoes}</div>}
           {ehObras
             ? <InfracoesObras selecionadas={form.infracoes} onChange={v => set('infracoes', v)} />
             : <InfracoesPosturas selecionadas={form.infracoes} onChange={v => set('infracoes', v)} />
@@ -204,7 +242,7 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
         <Secao titulo="Detalhes">
           <Campo label="Descrição">
             <textarea value={form.descricao} onChange={e => set('descricao', e.target.value)}
-              placeholder="Descreva a irregularidade..." rows={3} style={{ resize: 'vertical' }} />
+              placeholder="Descreva a irregularidade encontrada..." rows={3} style={{ resize: 'vertical' }} />
           </Campo>
           <Campo label="Prazo para regularização *" erro={erros.prazoDias}>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -240,19 +278,17 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
           </div>
         </Secao>
 
-        {/* Botões de ação */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <button onClick={salvarEImprimir} disabled={salvando} style={{
             background: '#1A56DB', color: '#fff', border: 'none', borderRadius: '12px',
             padding: '16px', fontSize: '1rem', fontWeight: '700', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
           }}>
-            🖨️ {salvando ? 'Salvando...' : 'Salvar e Imprimir'}
+            🖨️ {salvando ? 'Salvando...' : 'Salvar e Imprimir (Térmica)'}
           </button>
           <button onClick={salvar} disabled={salvando} style={{
             background: '#fff', color: '#1A56DB', border: '2px solid #1A56DB',
-            borderRadius: '12px', padding: '14px', fontSize: '0.95rem', fontWeight: '600',
-            cursor: 'pointer',
+            borderRadius: '12px', padding: '14px', fontSize: '0.95rem', fontWeight: '600', cursor: 'pointer',
           }}>
             {salvando ? 'Salvando...' : 'Apenas Salvar'}
           </button>

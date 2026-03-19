@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { loadSession, clearSession, startActivityTracking } from './auth/auth.js'
+import { query } from './config/supabase.js'
 import Login from './auth/Login.jsx'
 import TopBar from './components/TopBar.jsx'
 import BottomNav from './components/BottomNav.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import Toast from './components/Toast.jsx'
 import { GerenciaHeader } from './gerencia/GerenciaUI.jsx'
-import { podeRegistrarReclamacoes } from './gerencia/gerencia.js'
+import { isFiscal, podeRegistrarReclamacoes } from './gerencia/gerencia.js'
 
 import Dashboard from './pages/Dashboard.jsx'
 import RegistrosScreen from './pages/registros/RegistrosScreen.jsx'
@@ -28,6 +29,7 @@ export default function App() {
   const [paginaParams, setPaginaParams] = useState(null)
   const [toast, setToast]               = useState(null)
   const [carregando, setCarregando]     = useState(true)
+  const [badgeReclamacoes, setBadgeReclamacoes] = useState(0)
 
   useEffect(() => {
     const sessao = loadSession()
@@ -38,8 +40,20 @@ export default function App() {
   useEffect(() => {
     if (!usuario) return
     const parar = startActivityTracking()
+    // Carrega badge de reclamações para fiscal
+    if (isFiscal(usuario)) carregarBadge(usuario)
     return parar
   }, [usuario])
+
+  async function carregarBadge(u) {
+    try {
+      const dados = await query('reclamacoes', q =>
+        q.eq('fiscal_matricula', u.matricula)
+         .in('status', ['nova', 'em_atendimento'])
+      )
+      setBadgeReclamacoes(dados?.length || 0)
+    } catch { /* silencioso */ }
+  }
 
   function mostrarToast(mensagem, tipo = 'sucesso') {
     setToast({ mensagem, tipo })
@@ -49,16 +63,22 @@ export default function App() {
     setPaginaState(pag)
     setPaginaParams(params)
     window.scrollTo(0, 0)
+    // Atualiza badge ao sair da tela de reclamações
+    if (pag !== 'reclamacoes' && usuario && isFiscal(usuario)) {
+      setTimeout(() => carregarBadge(usuario), 500)
+    }
   }
 
   function handleLogin(user) {
     setUsuario(user)
     navegar('dashboard')
+    if (isFiscal(user)) carregarBadge(user)
   }
 
   function handleLogout() {
     clearSession()
     setUsuario(null)
+    setBadgeReclamacoes(0)
     navegar('dashboard')
   }
 
@@ -76,7 +96,7 @@ export default function App() {
   if (!usuario) return <Login onLogin={handleLogin} />
 
   const props = { usuario, mostrarToast, setPagina: navegar }
-  const abas  = getAbasNav(usuario)
+  const abas  = getAbasNav(usuario, badgeReclamacoes)
 
   function renderPagina() {
     switch (pagina) {
@@ -100,7 +120,7 @@ export default function App() {
   return (
     <div className="fiscon-layout">
       <div className="fiscon-sidebar">
-        <Sidebar usuario={usuario} paginaAtiva={pagina} onNavegar={navegar} onLogout={handleLogout} />
+        <Sidebar usuario={usuario} paginaAtiva={pagina} onNavegar={navegar} onLogout={handleLogout} badgeReclamacoes={badgeReclamacoes} />
       </div>
       <div className="fiscon-main-area">
         <div className="fiscon-topbar">
@@ -119,15 +139,16 @@ export default function App() {
   )
 }
 
-function getAbasNav(u) {
+function getAbasNav(u, badge = 0) {
   const role = u?.role
   const base = [{ id: 'dashboard', label: 'Início', icone: 'home' }]
+
   if (role === 'fiscal') return [
     ...base,
-    { id: 'registros',      label: 'Registros',  icone: 'file' },
-    { id: 'reclamacoes',    label: 'Reclamações', icone: 'phone' },
-    { id: 'prazos',         label: 'Prazos',      icone: 'clock' },
-    { id: 'mais',           label: 'Mais',        icone: 'settings' },
+    { id: 'registros',   label: 'Registros',     icone: 'file' },
+    { id: 'reclamacoes', label: 'Reclamações',    icone: 'phone', badge },
+    { id: 'prazos',      label: 'Prazos',         icone: 'clock' },
+    { id: 'mais',        label: 'Mais',           icone: 'settings' },
   ]
   if (role === 'balcao') return [
     ...base,
@@ -144,11 +165,11 @@ function getAbasNav(u) {
   ]
   if (role === 'gerencia') return [
     ...base,
-    { id: 'registros',      label: 'Registros',  icone: 'file' },
-    { id: 'reclamacoes',    label: 'Reclamações', icone: 'phone' },
-    { id: 'defesas',        label: 'Defesas',     icone: 'shield' },
-    { id: 'cancelamentos',  label: 'Cancelar',    icone: 'x' },
-    { id: 'mais',           label: 'Mais',        icone: 'settings' },
+    { id: 'registros',     label: 'Registros',  icone: 'file' },
+    { id: 'reclamacoes',   label: 'Reclamações', icone: 'phone' },
+    { id: 'defesas',       label: 'Defesas',     icone: 'shield' },
+    { id: 'cancelamentos', label: 'Cancelar',    icone: 'x' },
+    { id: 'mais',          label: 'Mais',        icone: 'settings' },
   ]
   return [
     ...base,

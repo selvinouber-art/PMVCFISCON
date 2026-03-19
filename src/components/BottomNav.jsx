@@ -1,20 +1,20 @@
 import React from 'react'
 import Icon from './Icon.jsx'
 
-export default function BottomNav({ ativo, onNavegar, abas = [], badgeReclamacoes = 0 }) {
+export default function BottomNav({ ativo, onNavegar, abas = [] }) {
   if (!abas.length) return null
   return (
     <nav style={estilos.nav}>
       {abas.map(item => {
         const estaAtivo = ativo === item.id
-        const temBadge = item.id === 'reclamacoes' && badgeReclamacoes > 0
+        const temBadge  = item.badge > 0
         return (
           <button key={item.id} onClick={() => onNavegar(item.id)}
             style={{ ...estilos.botao, ...(estaAtivo ? estilos.botaoAtivo : {}) }}>
             <div style={{ position: 'relative' }}>
               <Icon name={item.icone} size={22} color={estaAtivo ? '#1A56DB' : '#94A3B8'} />
               {temBadge && (
-                <span style={estilos.badge}>{badgeReclamacoes > 9 ? '9+' : badgeReclamacoes}</span>
+                <span style={estilos.badge}>{item.badge > 9 ? '9+' : item.badge}</span>
               )}
             </div>
             <span style={{ ...estilos.label, color: estaAtivo ? '#1A56DB' : '#94A3B8' }}>
@@ -42,9 +42,10 @@ const estilos = {
   botaoAtivo: { background: '#EBF5FF' },
   label: { fontSize: '0.65rem', fontWeight: '600' },
   badge: {
-    position: 'absolute', top: '-4px', right: '-6px', background: '#B91C1C',
-    color: '#fff', fontSize: '0.6rem', fontWeight: '700', borderRadius: '999px',
-    minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', padding: '0 3px',
+    position: 'absolute', top: '-5px', right: '-8px',
+    background: '#B91C1C', color: '#fff',
+    fontSize: '0.6rem', fontWeight: '700', borderRadius: '999px',
+    minWidth: '17px', height: '17px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
   },
 }

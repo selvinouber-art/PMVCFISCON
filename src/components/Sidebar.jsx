@@ -8,8 +8,8 @@ import {
   podeEmitirDocumentos, podeRegistrarReclamacoes,
 } from '../gerencia/gerencia.js'
 
-export default function Sidebar({ usuario, paginaAtiva, onNavegar, onLogout }) {
-  const g = getGerencia(usuario.gerencia)
+export default function Sidebar({ usuario, paginaAtiva, onNavegar, onLogout, badgeReclamacoes = 0 }) {
+  const g    = getGerencia(usuario.gerencia)
   const itens = buildItens(usuario)
 
   return (
@@ -37,7 +37,8 @@ export default function Sidebar({ usuario, paginaAtiva, onNavegar, onLogout }) {
       <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto' }}>
         {itens.map((item, i) => {
           if (item.divisor) return <div key={i} style={{ height: '1px', background: '#F1F5F9', margin: '8px' }} />
-          const ativo = paginaAtiva === item.id
+          const ativo      = paginaAtiva === item.id
+          const temBadge   = item.id === 'reclamacoes' && isFiscal(usuario) && badgeReclamacoes > 0
           return (
             <button key={item.id} onClick={() => onNavegar(item.id)} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
@@ -45,11 +46,22 @@ export default function Sidebar({ usuario, paginaAtiva, onNavegar, onLogout }) {
               background: ativo ? '#EBF5FF' : 'transparent',
               color: ativo ? '#1A56DB' : '#475569',
               fontWeight: ativo ? '700' : '500',
-              fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left',
-              marginBottom: '2px',
+              fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left', marginBottom: '2px',
+              position: 'relative',
             }}>
               <Icon name={item.icone} size={18} color={ativo ? '#1A56DB' : '#94A3B8'} />
               {item.label}
+              {temBadge && (
+                <span style={{
+                  marginLeft: 'auto',
+                  background: '#B91C1C', color: '#fff',
+                  fontSize: '0.65rem', fontWeight: '700',
+                  borderRadius: '999px', padding: '1px 8px',
+                  minWidth: '20px', textAlign: 'center',
+                }}>
+                  {badgeReclamacoes > 9 ? '9+' : badgeReclamacoes}
+                </span>
+              )}
             </button>
           )
         })}
@@ -73,30 +85,24 @@ export default function Sidebar({ usuario, paginaAtiva, onNavegar, onLogout }) {
 function buildItens(u) {
   const itens = [{ id: 'dashboard', label: 'Início', icone: 'home' }]
 
-  if (!isBalcao(u)) itens.push({ id: 'registros', label: 'Registros', icone: 'file' })
-  if (isFiscal(u))  itens.push({ id: 'prazos', label: 'Prazos', icone: 'clock' })
+  if (!isBalcao(u))               itens.push({ id: 'registros',        label: 'Registros',        icone: 'file' })
+  if (isFiscal(u))                itens.push({ id: 'prazos',           label: 'Prazos',           icone: 'clock' })
 
   itens.push({ id: 'reclamacoes', label: 'Reclamações', icone: 'phone' })
 
-  // Nova Reclamação: NUNCA aparece para fiscal
-  if (podeRegistrarReclamacoes(u)) {
-    itens.push({ id: 'nova-reclamacao', label: 'Nova Reclamação', icone: 'plus' })
-  }
-
+  if (podeRegistrarReclamacoes(u)) itens.push({ id: 'nova-reclamacao', label: 'Nova Reclamação',  icone: 'plus' })
   if (podeEmitirDocumentos(u)) {
-    itens.push({ id: 'nova-notificacao', label: 'Nova Notificação', icone: 'file' })
-    itens.push({ id: 'novo-auto', label: 'Novo Auto de Infração', icone: 'alert' })
+    itens.push({ id: 'nova-notificacao', label: 'Nova Notificação',    icone: 'file' })
+    itens.push({ id: 'novo-auto',        label: 'Novo Auto de Infração', icone: 'alert' })
   }
 
   itens.push({ divisor: true })
 
-  if (podeJulgarDefesas(u))  itens.push({ id: 'defesas',    label: 'Defesas',        icone: 'shield' })
-  if (podeVerRelatorios(u))  itens.push({ id: 'relatorios', label: 'Relatórios',      icone: 'chart' })
-  if (podeVerLogs(u))        itens.push({ id: 'auditoria',  label: 'Auditoria / Log', icone: 'eye' })
-  if (podeCriarUsuarios(u))  itens.push({ id: 'admin',      label: 'Usuários',        icone: 'users' })
-  if (isAdminGeral(u))       itens.push({ id: 'config',     label: 'Configurações',   icone: 'settings' })
-
-  // Pedidos de cancelamento — fiscal, administração e gerência veem
+  if (podeJulgarDefesas(u))   itens.push({ id: 'defesas',      label: 'Defesas',         icone: 'shield' })
+  if (podeVerRelatorios(u))   itens.push({ id: 'relatorios',   label: 'Relatórios',       icone: 'chart' })
+  if (podeVerLogs(u))         itens.push({ id: 'auditoria',    label: 'Auditoria / Log',  icone: 'eye' })
+  if (podeCriarUsuarios(u))   itens.push({ id: 'admin',        label: 'Usuários',         icone: 'users' })
+  if (isAdminGeral(u))        itens.push({ id: 'config',       label: 'Configurações',    icone: 'settings' })
   itens.push({ id: 'cancelamentos', label: 'Cancelamentos', icone: 'x' })
 
   itens.push({ divisor: true })
