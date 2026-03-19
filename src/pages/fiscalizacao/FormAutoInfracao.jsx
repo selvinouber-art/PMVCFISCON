@@ -166,8 +166,8 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
         <Secao titulo="Infrações *">
           {erros.infracoes && <div style={{ background: '#FEE2E2', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#B91C1C' }}>{erros.infracoes}</div>}
           {ehObras
-            ? <InfracoesObras selecionadas={form.infracoes} onChange={v => set('infracoes', v)} />
-            : <InfracoesPosturas selecionadas={form.infracoes} onChange={v => set('infracoes', v)} />
+            ? <InfracoesObras selecionadas={form.infracoes} onChange={v => set('infracoes', v)} mostrarValores={true} />
+            : <InfracoesPosturas selecionadas={form.infracoes} onChange={v => set('infracoes', v)} mostrarValores={true} />
           }
           {totalMulta > 0 && (
             <div style={{ background: '#FEE2E2', borderRadius: '10px', padding: '12px', textAlign: 'center', marginTop: '4px' }}>

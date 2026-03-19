@@ -92,16 +92,12 @@ export const isFiscal        = u => u?.role === 'fiscal'
 export const isBalcao        = u => u?.role === 'balcao'
 export const isAdministracao = u => u?.role === 'administracao'
 
-export const podeCriarUsuarios        = u => isAdminGeral(u) || u?.role === 'gerencia'
-export const podeEmitirDocumentos     = u => isFiscal(u) || isAdminGeral(u)
+export const podeCriarUsuarios = u => isAdminGeral(u) || isGerencia(u)
 
-// APENAS Balcão e Administração podem criar reclamações
-// NÃO inclui: fiscal, gerência, admin_geral (admin)
-export const podeRegistrarReclamacoes = u => {
-  const role = u?.role
-  return role === 'balcao' || role === 'administracao'
-}
+// SOMENTE fiscal emite notificações e autos de infração
+export const podeEmitirDocumentos = u => isFiscal(u)
 
+export const podeRegistrarReclamacoes = u => isBalcao(u) || isAdministracao(u)
 export const podeAtribuirReclamacoes  = u => isBalcao(u) || isAdministracao(u) || isGerencia(u) || isAdminGeral(u)
 export const podeVerLogs              = u => isGerencia(u) || isAdminGeral(u)
 export const podeVerRelatorios        = u => isGerencia(u) || isAdministracao(u) || isAdminGeral(u)
@@ -110,11 +106,8 @@ export const podeAlterarStatus        = u => isAdministracao(u) || isGerencia(u)
 
 export function nomePerfil(u) {
   const mapa = {
-    fiscal: 'Fiscal',
-    balcao: 'Balcão',
-    administracao: 'Administração',
-    gerencia: 'Gerência',
-    admin: 'Admin Geral',
+    fiscal: 'Fiscal', balcao: 'Balcão',
+    administracao: 'Administração', gerencia: 'Gerência', admin: 'Admin Geral',
   }
   return mapa[u?.role] || u?.role || ''
 }
