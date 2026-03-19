@@ -2,43 +2,57 @@ import React, { useState, useEffect } from 'react'
 import { query, update, insert } from '../../config/supabase.js'
 import Icon from '../../components/Icon.jsx'
 import Modal from '../../components/Modal.jsx'
-import { isFiscal, isGerencia, isAdminGeral, podeJulgarDefesas } from '../../gerencia/gerencia.js'
+import { isFiscal, isAdminGeral, podeJulgarDefesas } from '../../gerencia/gerencia.js'
 
 const STATUS = {
-  pendente:    { fundo: '#FEF3C7', cor: '#B45309', label: 'Pendente' },
-  deferida:    { fundo: '#F0FDF4', cor: '#166534', label: 'Deferida' },
-  indeferida:  { fundo: '#FEE2E2', cor: '#B91C1C', label: 'Indeferida' },
+  pendente:   { fundo: '#FEF3C7', cor: '#B45309', label: 'Pendente' },
+  deferida:   { fundo: '#F0FDF4', cor: '#166534', label: 'Deferida' },
+  indeferida: { fundo: '#FEE2E2', cor: '#B91C1C', label: 'Indeferida' },
 }
 
 export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
-  const [defesas, setDefesas]       = useState([])
-  const [carregando, setCarregando] = useState(true)
+  const [defesas, setDefesas]         = useState([])
+  const [meusIds, setMeusIds]         = useState(null) // IDs dos registros do fiscal
+  const [carregando, setCarregando]   = useState(true)
   const [selecionada, setSelecionada] = useState(null)
-  const [parecer, setParecer]       = useState('')
-  const [julgando, setJulgando]     = useState(false)
+  const [parecer, setParecer]         = useState('')
+  const [julgando, setJulgando]       = useState(false)
 
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
+    setCarregando(true)
     try {
-      const dados = await query('defesas', q => {
-        let qr = q.order('created_at', { ascending: false })
-        if (!isAdminGeral(usuario)) qr = qr.eq('gerencia', usuario.gerencia)
-        return qr
-      })
-
-      // Fiscal só vê defesas dos registros que ele emitiu
+      // Se fiscal, busca primeiro os IDs dos seus registros
       if (isFiscal(usuario)) {
-        const matricula = usuario.matricula
-        // Busca os records do fiscal
-        const { query: qFn } = await import('../../config/supabase.js')
-        const meusRegistros = await qFn('records', q => q.eq('matricula', matricula).select('id'))
-        const meuIds = (meusRegistros || []).map(r => r.id)
-        setDefesas((dados || []).filter(d => meuIds.includes(d.record_id)))
+        const meuRecs = await query('records', q =>
+          q.eq('matricula', usuario.matricula).select('id')
+        )
+        const ids = (meuRecs || []).map(r => r.id)
+        setMeusIds(ids)
+
+        if (ids.length === 0) {
+          setDefesas([])
+          setCarregando(false)
+          return
+        }
+
+        const todas = await query('defesas', q => {
+          let qr = q.order('created_at', { ascending: false })
+          if (!isAdminGeral(usuario)) qr = qr.eq('gerencia', usuario.gerencia)
+          return qr
+        })
+        setDefesas((todas || []).filter(d => ids.includes(d.record_id)))
       } else {
+        const dados = await query('defesas', q => {
+          let qr = q.order('created_at', { ascending: false })
+          if (!isAdminGeral(usuario)) qr = qr.eq('gerencia', usuario.gerencia)
+          return qr
+        })
         setDefesas(dados || [])
       }
-    } catch {
+    } catch (err) {
+      console.error('Erro ao carregar defesas:', err)
       mostrarToast('Erro ao carregar defesas', 'erro')
     } finally {
       setCarregando(false)
@@ -63,9 +77,14 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
       })
       mostrarToast(`Defesa ${decisao}!`, 'sucesso')
       setSelecionada(null)
+      setParecer('')
       carregar()
-    } catch { mostrarToast('Erro ao julgar', 'erro') }
-    finally { setJulgando(false) }
+    } catch (err) {
+      console.error('Erro ao julgar defesa:', err)
+      mostrarToast('Erro ao julgar', 'erro')
+    } finally {
+      setJulgando(false)
+    }
   }
 
   const podeJulgar = podeJulgarDefesas(usuario)
@@ -79,7 +98,7 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
         <div>
           <h2 style={{ fontSize: '1.2rem', color: '#1E293B', margin: 0 }}>Defesas</h2>
           <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '2px' }}>
-            {isFiscal(usuario) ? 'Defesas das suas notificações/autos' : 'Todas as defesas recebidas'}
+            {isFiscal(usuario) ? 'Defesas das suas notificações e autos' : 'Todas as defesas recebidas'}
           </div>
         </div>
       </div>
@@ -102,7 +121,9 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.9rem', color: '#1A56DB' }}>{def.record_num}</span>
-                  <span style={{ background: sc.fundo, color: sc.cor, fontSize: '0.65rem', fontWeight: '700', borderRadius: '999px', padding: '3px 10px' }}>{sc.label}</span>
+                  <span style={{ background: sc.fundo, color: sc.cor, fontSize: '0.65rem', fontWeight: '700', borderRadius: '999px', padding: '3px 10px' }}>
+                    {sc.label}
+                  </span>
                 </div>
                 <div style={{ fontSize: '0.82rem', color: '#374151' }}>{def.nome}</div>
                 {def.cpf && <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>CPF: {def.cpf}</div>}
@@ -115,7 +136,7 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
         </div>
       )}
 
-      <Modal aberto={!!selecionada} onClose={() => setSelecionada(null)} titulo={`Defesa — ${selecionada?.record_num}`}>
+      <Modal aberto={!!selecionada} onClose={() => { setSelecionada(null); setParecer('') }} titulo={`Defesa — ${selecionada?.record_num}`}>
         {selecionada && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <InfoBloco label="Defensor" valor={`${selecionada.nome}${selecionada.cpf ? ` — CPF: ${selecionada.cpf}` : ''}`} />
@@ -139,12 +160,21 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
             {selecionada.status === 'pendente' && podeJulgar ? (
               <div>
                 <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Parecer *</div>
-                <textarea value={parecer} onChange={e => setParecer(e.target.value)} rows={4} placeholder="Fundamente a decisão..." style={{ resize: 'vertical', marginBottom: '12px' }} />
+                <textarea
+                  value={parecer} onChange={e => setParecer(e.target.value)}
+                  rows={4} placeholder="Fundamente a decisão..." style={{ resize: 'vertical', marginBottom: '12px' }}
+                />
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => julgar('deferida')} disabled={julgando} style={{ flex: 1, background: '#166534', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                  <button onClick={() => julgar('deferida')} disabled={julgando} style={{
+                    flex: 1, background: '#166534', color: '#fff', border: 'none',
+                    borderRadius: '10px', padding: '12px', fontWeight: '700', cursor: 'pointer',
+                  }}>
                     ✅ Deferir
                   </button>
-                  <button onClick={() => julgar('indeferida')} disabled={julgando} style={{ flex: 1, background: '#B91C1C', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                  <button onClick={() => julgar('indeferida')} disabled={julgando} style={{
+                    flex: 1, background: '#B91C1C', color: '#fff', border: 'none',
+                    borderRadius: '10px', padding: '12px', fontWeight: '700', cursor: 'pointer',
+                  }}>
                     ❌ Indeferir
                   </button>
                 </div>
@@ -172,7 +202,7 @@ function InfoBloco({ label, valor }) {
   if (!valor) return null
   return (
     <div>
-      <div style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: '600', marginBottom: '3px' }}>{label}</div>
+      <div style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: '600', textTransform: 'uppercase', marginBottom: '3px' }}>{label}</div>
       <div style={{ fontSize: '0.88rem', color: '#374151' }}>{valor}</div>
     </div>
   )

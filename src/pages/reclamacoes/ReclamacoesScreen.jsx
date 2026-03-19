@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { query, update, insert } from '../../config/supabase.js'
 import Icon from '../../components/Icon.jsx'
 import Modal from '../../components/Modal.jsx'
-import { isFiscal, isBalcao, podeAtribuirReclamacoes, podeRegistrarReclamacoes, isAdminGeral } from '../../gerencia/gerencia.js'
+import { isFiscal, podeAtribuirReclamacoes, podeRegistrarReclamacoes, isAdminGeral } from '../../gerencia/gerencia.js'
 
 const STATUS_INFO = {
   nova:           { fundo: '#FEE2E2', cor: '#B91C1C', label: 'Nova' },
@@ -29,6 +29,7 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
   useEffect(() => { carregar() }, [usuario])
 
   async function carregar() {
+    setCarregando(true)
     try {
       const dados = await query('reclamacoes', q => {
         let qr = q.order('created_at', { ascending: false })
@@ -44,17 +45,13 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
         )
         setFiscais(fs || [])
       }
-    } catch {
+    } catch (err) {
+      console.error('Erro ao carregar reclamações:', err)
       mostrarToast('Erro ao carregar reclamações', 'erro')
     } finally {
       setCarregando(false)
     }
   }
-
-  // Badge — reclamações abertas do fiscal (nova + em_atendimento)
-  const badgeFiscal = ehFiscal
-    ? reclamacoes.filter(r => r.status === 'nova' || r.status === 'em_atendimento').length
-    : 0
 
   async function atribuirFiscal() {
     if (!novoFiscal) { mostrarToast('Selecione um fiscal', 'erro'); return }
@@ -63,7 +60,8 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
     setAtribuindo(true)
     try {
       await update('reclamacoes', selecionada.id, {
-        fiscal: fiscal.name, fiscal_matricula: fiscal.matricula,
+        fiscal: fiscal.name,
+        fiscal_matricula: fiscal.matricula,
         status: 'em_atendimento',
       })
       await insert('logs', {
@@ -74,29 +72,37 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
       mostrarToast(`Atribuída para ${fiscal.name}`, 'sucesso')
       setSelecionada(null)
       carregar()
-    } catch { mostrarToast('Erro ao atribuir', 'erro') }
-    finally { setAtribuindo(false) }
+    } catch (err) {
+      console.error('Erro ao atribuir fiscal:', err)
+      mostrarToast('Erro ao atribuir fiscal', 'erro')
+    } finally {
+      setAtribuindo(false) }
   }
 
   async function marcarResolvida() {
     setResolvendo(true)
     try {
+      const obs = obsResolucao.trim() || 'Verificado in loco. Sem irregularidades constatadas.'
+      // Usa apenas colunas que existem na tabela (parecer e status)
       await update('reclamacoes', selecionada.id, {
         status: 'resolvida',
-        parecer: obsResolucao.trim() || 'Verificado in loco. Sem irregularidades constatadas.',
-        parecerStatus: 'resolvida',
+        parecer: obs,
       })
       await insert('logs', {
         gerencia: usuario.gerencia, acao: 'RECLAMACAO_RESOLVIDA',
-        detalhe: `Reclamação ${selecionada.protocolo} resolvida por ${usuario.name}. Obs: ${obsResolucao || 'Sem irregularidades.'}`,
+        detalhe: `Reclamação ${selecionada.protocolo || selecionada.id} resolvida por ${usuario.name}. Obs: ${obs}`,
         usuario: usuario.name,
       })
       mostrarToast('Reclamação marcada como resolvida!', 'sucesso')
       setSelecionada(null)
       setObsResolucao('')
       carregar()
-    } catch { mostrarToast('Erro ao resolver', 'erro') }
-    finally { setResolvendo(false) }
+    } catch (err) {
+      console.error('Erro ao marcar como resolvida:', err)
+      mostrarToast(`Erro ao resolver reclamação: ${err.message || 'tente novamente'}`, 'erro')
+    } finally {
+      setResolvendo(false)
+    }
   }
 
   const filtradas = reclamacoes.filter(r => {
@@ -109,7 +115,6 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
     return buscaOk && statusOk
   })
 
-  // Contagem de abertas (badge para fiscal no header)
   const qtdAbertas = reclamacoes.filter(r => r.status === 'nova' || r.status === 'em_atendimento').length
 
   return (
@@ -119,13 +124,10 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
           <h2 style={{ fontSize: '1.2rem', color: '#1E293B', margin: 0 }}>
             {ehFiscal ? 'Minhas Reclamações' : 'Reclamações'}
           </h2>
-          {/* Badge para fiscal */}
           {ehFiscal && qtdAbertas > 0 && (
             <span style={{
-              background: '#B91C1C', color: '#fff',
-              fontSize: '0.72rem', fontWeight: '700',
-              borderRadius: '999px', padding: '2px 10px',
-              minWidth: '24px', textAlign: 'center',
+              background: '#B91C1C', color: '#fff', fontSize: '0.72rem',
+              fontWeight: '700', borderRadius: '999px', padding: '2px 10px',
             }}>
               {qtdAbertas}
             </span>
@@ -148,7 +150,7 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
         </div>
       )}
 
-      <div style={{ position: 'relative', marginBottom: '12px' }}>
+      <div style={{ position: 'relative', marginBottom: '10px' }}>
         <Icon name="search" size={16} color="#94A3B8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
         <input type="text" placeholder="Buscar..." value={busca} onChange={e => setBusca(e.target.value)} style={{ paddingLeft: '36px' }} />
       </div>
@@ -179,7 +181,7 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.82rem', color: '#1A56DB' }}>
-                    {rec.protocolo || rec.id.slice(-8).toUpperCase()}
+                    {rec.protocolo || rec.id?.slice(-8).toUpperCase()}
                   </span>
                   <span style={{ background: sc.fundo, color: sc.cor, fontSize: '0.65rem', fontWeight: '700', borderRadius: '999px', padding: '3px 10px' }}>
                     {sc.label}
@@ -189,7 +191,7 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
                 <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{rec.endereco}{rec.bairro ? ` — ${rec.bairro}` : ''}</div>
                 <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '0.72rem', color: rec.fiscal ? '#166534' : '#94A3B8' }}>
-                    {rec.fiscal ? `👤 ${rec.fiscal}` : '⚪ Sem fiscal'}
+                    {rec.fiscal ? `👤 ${rec.fiscal}` : '⚪ Sem fiscal atribuído'}
                   </span>
                   {rec.prioridade === 'urgente' && <span style={{ fontSize: '0.68rem', color: '#B91C1C', fontWeight: '700' }}>🔴 URGENTE</span>}
                 </div>
@@ -199,7 +201,6 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
         </div>
       )}
 
-      {/* Modal de detalhe */}
       <Modal aberto={!!selecionada} onClose={() => { setSelecionada(null); setObsResolucao('') }} titulo={`Reclamação — ${selecionada?.protocolo || ''}`}>
         {selecionada && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -215,6 +216,8 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
                 </div>
               </div>
             )}
+
+            {/* Resolução já registrada */}
             {selecionada.parecer && selecionada.status === 'resolvida' && (
               <div>
                 <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginBottom: '4px' }}>Resolução</div>
@@ -228,7 +231,7 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
             {podeAtribuirReclamacoes(usuario) && fiscais.length > 0 && selecionada.status !== 'resolvida' && (
               <div>
                 <div style={{ fontSize: '0.82rem', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                  {selecionada.fiscal ? `Fiscal: ${selecionada.fiscal}` : 'Atribuir fiscal'}
+                  {selecionada.fiscal ? `Fiscal atual: ${selecionada.fiscal}` : 'Atribuir fiscal'}
                 </div>
                 <select value={novoFiscal} onChange={e => setNovoFiscal(e.target.value)} style={{ marginBottom: '10px' }}>
                   <option value="">Selecione o fiscal...</option>
@@ -243,7 +246,7 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
               </div>
             )}
 
-            {/* Marcar como resolvida — fiscal ou quem pode atribuir */}
+            {/* Marcar como resolvida */}
             {selecionada.status !== 'resolvida' && selecionada.status !== 'arquivada' && (
               <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '14px' }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
@@ -265,11 +268,14 @@ export default function ReclamacoesScreen({ usuario, setPagina, mostrarToast }) 
               </div>
             )}
 
-            {/* Ações do fiscal — gerar notificação/auto */}
+            {/* Ações do fiscal */}
             {ehFiscal && selecionada.fiscal_matricula === usuario.matricula && selecionada.status !== 'resolvida' && (
               <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '14px', display: 'flex', gap: '10px' }}>
                 <button
-                  onClick={() => { setSelecionada(null); setPagina('nova-notificacao', { fromReclamacao: { ...selecionada, descricao: '' } }) }}
+                  onClick={() => {
+                    setSelecionada(null)
+                    setPagina('nova-notificacao', { fromReclamacao: { ...selecionada, descricao: '' } })
+                  }}
                   style={{ flex: 1, background: '#EBF5FF', color: '#1A56DB', border: 'none', borderRadius: '10px', padding: '10px', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer' }}
                 >
                   📋 Gerar Notificação
