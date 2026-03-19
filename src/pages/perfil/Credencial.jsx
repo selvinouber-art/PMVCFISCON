@@ -1,9 +1,9 @@
-import { INFO_MODULO } from '../../gerencia/GerenciaUI.jsx'
 import { getGerencia, nomePerfil } from '../../gerencia/gerencia.js'
+import { INFO_MODULO } from '../../gerencia/GerenciaUI.jsx'
 import { mascaraMatricula, mascaraCPF } from '../../components/MascaraInput.jsx'
 import { getOne } from '../../config/supabase.js'
 
-const BRASAO_URL = 'https://upload.wikimedia.org/wikipedia/commons/5/57/Bras%C3%A3o_Vitoria_da_Conquista.svg'
+const BRASAO = 'https://upload.wikimedia.org/wikipedia/commons/5/57/Bras%C3%A3o_Vitoria_da_Conquista.svg'
 
 export async function abrirCredencial(usuarioInicial) {
   let usuario = usuarioInicial
@@ -16,233 +16,293 @@ export async function abrirCredencial(usuarioInicial) {
   const info = INFO_MODULO[usuario.gerencia] || INFO_MODULO.obras
   const mat  = mascaraMatricula(usuario.matricula || '')
   const cpf  = mascaraCPF(usuario.endereco || '')
-  const gradiente = `linear-gradient(175deg, ${g.cor} 0%, ${g.cor}CC 50%, #0a1a4a 100%)`
-  const fotoSrc = usuario.foto_perfil || ''
+  const foto = usuario.foto_perfil || ''
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
   <title>Crachá — ${usuario.name}</title>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet"/>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      height: 100%; width: 100%;
+      width: 100%; height: 100%;
+      background: #0f172a;
       display: flex; align-items: center; justify-content: center;
-      background: #0a1a4a;
       font-family: 'Barlow', sans-serif;
       overflow: hidden;
     }
+
+    /* Card proporcional — 54mm × 85.6mm = 0.631 ratio */
     .card {
-      width: min(88vw, 50vh * 0.631);
-      height: min(88vh, 88vw / 0.631);
-      background: ${gradiente};
-      border-radius: 20px;
+      /* Ocupa o máximo possível mantendo a proporção */
+      width: min(92vw, 92vh * 0.631);
+      height: min(92vh, 92vw / 0.631);
+      border-radius: min(3.2vw, 14px);
       overflow: hidden;
-      box-shadow: 0 16px 64px rgba(0,0,0,0.6);
-      position: relative;
       display: flex;
       flex-direction: column;
-    }
-    .dagua {
-      position: absolute; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      pointer-events: none; z-index: 0;
-    }
-    .dagua img { width: 85%; height: 85%; opacity: 0.07; object-fit: contain; filter: brightness(10); }
-    .topo { height: 5px; background: rgba(255,255,255,0.5); position: relative; z-index: 1; }
-    .cabecalho {
-      padding: 3% 5% 2%; text-align: center;
-      border-bottom: 1px solid rgba(255,255,255,0.2);
-      position: relative; z-index: 1;
-    }
-    .brasao-img { width: 11%; height: auto; margin-bottom: 2%; }
-    .cab-pref { font-size: 1.7vmin; color: rgba(255,255,255,0.8); line-height: 1.3; }
-    .cab-sec  { font-size: 2.1vmin; font-weight: 700; color: #fff; margin: 1% 0; line-height: 1.2; }
-    .cab-ger  { font-size: 1.7vmin; color: rgba(255,255,255,0.75); line-height: 1.3; }
-    /* Foto — maior */
-    .foto-wrap {
-      display: flex; justify-content: center;
-      padding: 4% 0 2%;
-      position: relative; z-index: 1;
-    }
-    .foto-circulo {
-      /* 34% da largura do card */
-      width: 34%; padding-top: 34%;
-      border-radius: 50%;
-      border: 3px solid rgba(255,255,255,0.85);
-      overflow: hidden;
-      background: rgba(255,255,255,0.15);
+      box-shadow: 0 20px 64px rgba(0,0,0,0.8);
       position: relative;
+    }
+
+    /* Faixas tricolores */
+    .tricolor {
+      flex-shrink: 0;
+      height: min(2vh, 8px);
+      background: linear-gradient(90deg, #009c3b 33.33%, #ffdf00 33.33% 66.66%, #002776 66.66%);
+    }
+
+    /* Header azul escuro — textos centralizados */
+    .header {
+      background: #001f5e;
+      flex-shrink: 0;
+      padding: min(2.5vh, 12px) min(4vw, 16px);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: min(0.4vh, 2px);
+    }
+    .h-prefeitura {
+      font-size: min(1.7vw, 7px);
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      line-height: 1.3;
+    }
+    .h-municipio {
+      font-size: min(2.4vw, 10px);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.05em;
+      line-height: 1.2;
+    }
+    .h-secretaria {
+      font-size: min(1.7vw, 7px);
+      font-weight: 600;
+      color: #ffdf00;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 1.3;
+    }
+    .h-gerencia {
+      font-size: min(1.5vw, 6px);
+      color: rgba(255,255,255,0.5);
+      line-height: 1.3;
+    }
+
+    /* Banner CREDENCIAL FUNCIONAL */
+    .banner {
+      background: #1a56db;
+      flex-shrink: 0;
+      padding: min(0.8vh, 4px) 0;
+      text-align: center;
+    }
+    .banner-txt {
+      font-size: min(1.9vw, 7.5px);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    /* Brasão grande centralizado */
+    .brasao-area {
+      background: #001f5e;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: min(2.5vh, 13px) 0;
+    }
+    .brasao-area img {
+      width: min(19vw, 78px);
+      height: min(19vw, 78px);
+    }
+
+    /* Separador fino azul */
+    .sep {
+      background: #1a56db;
+      height: min(0.6vh, 3px);
       flex-shrink: 0;
     }
-    .foto-circulo img {
-      position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-      object-position: center top;
+
+    /* Corpo branco: foto + dados */
+    .corpo {
+      flex: 1;
+      background: #f8fafc;
+      display: flex;
+      gap: min(2.5vw, 11px);
+      padding: min(2.2vh, 11px) min(3vw, 13px);
+      position: relative;
+      overflow: hidden;
+      min-height: 0;
     }
-    .foto-sem {
-      position: absolute; inset: 0;
+
+    /* Marca d'água */
+    .dagua {
+      position: absolute;
+      bottom: -8px; right: -8px;
+      opacity: 0.04;
+      pointer-events: none;
+    }
+    .dagua img { width: min(28vw, 110px); height: min(28vw, 110px); }
+
+    /* Foto */
+    .foto-wrap { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: min(0.5vh, 3px); }
+    .foto-box {
+      border-radius: min(1.2vw, 5px);
+      border: min(0.5vw, 2px) solid #001f5e;
+      overflow: hidden;
+      background: #dde3ec;
       display: flex; align-items: center; justify-content: center;
-      font-size: 8vmin;
+      width: min(19vw, 74px);
+      height: min(24vw, 94px);
+      flex-shrink: 0;
     }
-    .nome-area { text-align: center; padding: 0 5% 3%; position: relative; z-index: 1; }
-    .nome {
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 4.8vmin; font-weight: 700; color: #fff;
-      line-height: 1.1; letter-spacing: 0.02em;
+    .foto-box img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+    .foto-sem { font-size: min(8vw, 32px); opacity: 0.25; }
+    .foto-label { font-size: min(1.4vw, 5.5px); color: #94a3b8; letter-spacing: 0.06em; }
+
+    /* Dados */
+    .dados { flex: 1; display: flex; flex-direction: column; gap: min(1.2vh, 6px); min-width: 0; justify-content: center; }
+    .campo-label {
+      font-size: min(1.5vw, 5.5px);
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      line-height: 1;
+      margin-bottom: min(0.3vh, 1px);
     }
-    .cargo { font-size: 2.6vmin; color: rgba(255,255,255,0.9); font-weight: 600; margin-top: 1.5%; }
-    .divisor { height: 1px; background: rgba(255,255,255,0.25); margin: 0 5%; position: relative; z-index: 1; }
-    .rodape {
-      padding: 3% 5%; flex: 1;
-      display: flex; flex-direction: column; justify-content: center;
-      gap: 3%; position: relative; z-index: 1;
+    .campo-nome {
+      font-size: min(2.4vw, 9.5px);
+      font-weight: 700;
+      color: #1e293b;
+      line-height: 1.2;
     }
-    .row { display: flex; justify-content: space-between; align-items: flex-start; }
-    .info-label { font-size: 1.5vmin; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1px; }
-    .info-valor    { font-size: 3vmin; color: #fff; font-weight: 700; letter-spacing: 0.05em; }
-    .info-valor-sm { font-size: 2.5vmin; color: #fff; font-weight: 600; letter-spacing: 0.04em; }
-    .barra-inf { height: 5px; background: rgba(255,255,255,0.3); position: relative; z-index: 1; }
+    .campo-cargo {
+      font-size: min(2.2vw, 8.5px);
+      font-weight: 700;
+      color: #001f5e;
+      line-height: 1.2;
+    }
+    .campo-mat {
+      font-size: min(2.8vw, 11px);
+      font-weight: 700;
+      color: #1e293b;
+      letter-spacing: 0.1em;
+      font-family: 'Courier New', monospace;
+    }
+    .campo-cpf {
+      font-size: min(2.3vw, 9px);
+      font-weight: 600;
+      color: #1e293b;
+      font-family: 'Courier New', monospace;
+    }
+
+    @media print {
+      html, body { background: #fff; }
+      @page { size: 54mm 85.6mm; margin: 0; }
+      .card { width: 54mm; height: 85.6mm; border-radius: 0; box-shadow: none; }
+    }
   </style>
 </head>
 <body>
 <div class="card">
-  <div class="dagua"><img src="${BRASAO_URL}" alt=""/></div>
-  <div class="topo"></div>
-  <div class="cabecalho">
-    <img class="brasao-img" src="${BRASAO_URL}" alt="Brasão"/>
-    <div class="cab-pref">Prefeitura Municipal de Vitória da Conquista</div>
-    <div class="cab-sec">${info.secretaria}</div>
-    <div class="cab-ger">${info.gerencia}</div>
+
+  <!-- Faixa tricolor topo -->
+  <div class="tricolor"></div>
+
+  <!-- Header textos centralizados -->
+  <div class="header">
+    <div class="h-prefeitura">Prefeitura Municipal de</div>
+    <div class="h-municipio">VITÓRIA DA CONQUISTA</div>
+    <div class="h-secretaria">${info.secretaria}</div>
+    <div class="h-gerencia">${info.gerencia}</div>
   </div>
-  <div class="foto-wrap">
-    <div class="foto-circulo">
-      ${fotoSrc
-        ? `<img src="${fotoSrc}" alt="Foto"/>`
-        : `<div class="foto-sem">👤</div>`
-      }
-    </div>
+
+  <!-- Banner -->
+  <div class="banner">
+    <div class="banner-txt">Credencial Funcional</div>
   </div>
-  <div class="nome-area">
-    <div class="nome">${(usuario.name || '').toUpperCase()}</div>
-    <div class="cargo">${usuario.cargo || nomePerfil(usuario)}</div>
+
+  <!-- Brasão grande centralizado -->
+  <div class="brasao-area">
+    <img src="${BRASAO}" alt="Brasão PMVC"/>
   </div>
-  <div class="divisor"></div>
-  <div class="rodape">
-    <div class="row">
-      <div>
-        <div class="info-label">Matrícula</div>
-        <div class="info-valor">${mat}</div>
+
+  <!-- Separador -->
+  <div class="sep"></div>
+
+  <!-- Corpo: foto + dados -->
+  <div class="corpo">
+    <div class="dagua"><img src="${BRASAO}" alt=""/></div>
+
+    <div class="foto-wrap">
+      <div class="foto-box">
+        ${foto
+          ? `<img src="${foto}" alt="Foto" id="fotoImg"/>`
+          : `<div class="foto-sem">👤</div>`
+        }
       </div>
+      <div class="foto-label">FOTO 3×4</div>
     </div>
-    ${cpf ? `<div><div class="info-label">CPF</div><div class="info-valor-sm">${cpf}</div></div>` : ''}
+
+    <div class="dados">
+      <div>
+        <div class="campo-label">Nome</div>
+        <div class="campo-nome">${(usuario.name || '').toUpperCase()}</div>
+      </div>
+      <div>
+        <div class="campo-label">Cargo</div>
+        <div class="campo-cargo">${usuario.cargo || nomePerfil(usuario)}</div>
+      </div>
+      <div>
+        <div class="campo-label">Matrícula</div>
+        <div class="campo-mat">${mat}</div>
+      </div>
+      ${cpf ? `<div>
+        <div class="campo-label">CPF</div>
+        <div class="campo-cpf">${cpf}</div>
+      </div>` : ''}
+    </div>
   </div>
-  <div class="barra-inf"></div>
+
+  <!-- Faixa tricolor rodapé -->
+  <div class="tricolor"></div>
 </div>
-</body></html>`
+
+${foto ? `
+<script>
+  const img = document.getElementById('fotoImg')
+  if (img) {
+    let dragging = false, startY = 0, pos = 20
+    img.style.objectPosition = 'center ' + pos + '%'
+    img.style.cursor = 'ns-resize'
+    img.addEventListener('mousedown', e => { dragging = true; startY = e.clientY; e.preventDefault() })
+    img.addEventListener('touchstart', e => { dragging = true; startY = e.touches[0].clientY; e.preventDefault() }, { passive: false })
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return
+      pos = Math.max(0, Math.min(100, pos - (e.clientY - startY) * 0.4))
+      img.style.objectPosition = 'center ' + pos + '%'
+      startY = e.clientY
+    })
+    document.addEventListener('touchmove', e => {
+      if (!dragging) return
+      pos = Math.max(0, Math.min(100, pos - (e.touches[0].clientY - startY) * 0.4))
+      img.style.objectPosition = 'center ' + pos + '%'
+      startY = e.touches[0].clientY
+    }, { passive: false })
+    document.addEventListener('mouseup', () => dragging = false)
+    document.addEventListener('touchend', () => dragging = false)
+  }
+</script>` : ''}
+</body>
+</html>`
 
   const win = window.open('', '_blank')
   win.document.write(html)
   win.document.close()
-}
-
-// ============================================================
-// Componente de ajuste de foto antes do upload
-// Usado no UserFormModal
-// ============================================================
-export function FotoAjuste({ arquivo, onConfirmar, onCancelar }) {
-  // Renderizado via portal no UserFormModal
-  // Exibe a foto em tela cheia com slider de posição vertical
-  // O usuário arrasta para ajustar e clica em "Confirmar"
-  return null // implementado via HTML puro abaixo
-}
-
-export function abrirAjusteFoto(arquivo, onConfirmar) {
-  const objUrl = URL.createObjectURL(arquivo)
-  const win = window.open('', '_blank', 'width=400,height=600')
-
-  win.document.write(`<!DOCTYPE html>
-<html><head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Ajustar foto</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a1a4a; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: sans-serif; color: #fff; padding: 20px; gap: 20px; }
-    h2 { font-size: 1.1rem; text-align: center; }
-    .circulo-wrap { width: 220px; height: 220px; border-radius: 50%; border: 4px solid rgba(255,255,255,0.8); overflow: hidden; background: rgba(255,255,255,0.1); position: relative; cursor: ns-resize; flex-shrink: 0; }
-    .circulo-wrap img { position: absolute; left: 0; width: 100%; height: auto; min-height: 100%; object-fit: cover; user-select: none; -webkit-user-drag: none; }
-    .dica { font-size: 0.82rem; color: rgba(255,255,255,0.6); text-align: center; }
-    .slider-wrap { width: 220px; }
-    label { font-size: 0.82rem; color: rgba(255,255,255,0.7); display: block; margin-bottom: 6px; }
-    input[type=range] { width: 100%; accent-color: #4A90E2; }
-    .btns { display: flex; gap: 12px; }
-    button { padding: 12px 28px; border-radius: 10px; border: none; font-size: 1rem; font-weight: 700; cursor: pointer; }
-    .btn-ok  { background: #1A56DB; color: #fff; }
-    .btn-can { background: rgba(255,255,255,0.15); color: #fff; }
-  </style>
-</head><body>
-  <h2>Ajuste a posição da foto</h2>
-  <div class="circulo-wrap" id="circulo">
-    <img src="${objUrl}" id="img" draggable="false"/>
-  </div>
-  <div class="slider-wrap">
-    <label>Posição vertical</label>
-    <input type="range" id="slider" min="0" max="100" value="30"/>
-  </div>
-  <div class="dica">Arraste o slider para centralizar o rosto</div>
-  <div class="btns">
-    <button class="btn-ok"  onclick="confirmar()">✅ Confirmar</button>
-    <button class="btn-can" onclick="window.close()">Cancelar</button>
-  </div>
-  <script>
-    const img    = document.getElementById('img')
-    const slider = document.getElementById('slider')
-    let pos = 30
-
-    slider.addEventListener('input', () => {
-      pos = Number(slider.value)
-      img.style.top = (-pos * 0.8) + '%'
-    })
-
-    function confirmar() {
-      // Renderiza no canvas com a posição ajustada
-      const canvas = document.createElement('canvas')
-      canvas.width  = 400
-      canvas.height = 400
-      const ctx = canvas.getContext('2d')
-      const naturalW = img.naturalWidth
-      const naturalH = img.naturalHeight
-      // Escala para caber na largura
-      const scale = 400 / naturalW
-      const scaledH = naturalH * scale
-      const offsetY = (pos / 100) * (scaledH - 400)
-      ctx.drawImage(img, 0, -offsetY, 400, scaledH)
-      canvas.toBlob(blob => {
-        const channel = new BroadcastChannel('fiscon_foto_ajuste')
-        const reader  = new FileReader()
-        reader.onload = e => { channel.postMessage({ dataUrl: e.target.result }); window.close() }
-        reader.readAsDataURL(blob)
-      }, 'image/jpeg', 0.92)
-    }
-  </script>
-</body></html>`)
-  win.document.close()
-
-  // Escuta o resultado
-  const channel = new BroadcastChannel('fiscon_foto_ajuste')
-  channel.onmessage = (e) => {
-    fetch(e.data.dataUrl)
-      .then(r => r.blob())
-      .then(blob => {
-        const file = new File([blob], arquivo.name, { type: 'image/jpeg' })
-        onConfirmar(file, e.data.dataUrl)
-      })
-    channel.close()
-    URL.revokeObjectURL(objUrl)
-  }
 }
