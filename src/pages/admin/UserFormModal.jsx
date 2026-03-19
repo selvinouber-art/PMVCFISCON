@@ -10,12 +10,17 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
     name: '', matricula: '', cpf: '', cargo: '', senha: '',
     role: '', gerencia: '', email: '', telefone: '', bairros: [],
   })
-  const [perfis, setPerfis]         = useState([])
-  const [salvando, setSalvando]     = useState(false)
-  const [erros, setErros]           = useState({})
+  const [perfis, setPerfis]           = useState([])
+  const [salvando, setSalvando]       = useState(false)
+  const [erros, setErros]             = useState({})
   const [fotoPreview, setFotoPreview] = useState(null)
   const [fotoArquivo, setFotoArquivo] = useState(null)
+  // Estado do ajuste de enquadramento
+  const [fotoOrigem, setFotoOrigem]   = useState(null) // URL original para ajuste
+  const [ajustando, setAjustando]     = useState(false)
+  const [posY, setPosY]               = useState(20)   // 0-100%
   const inputFotoRef = useRef()
+  const imgAjusteRef = useRef()
 
   const gerenciasDisponiveis = isAdminGeral(usuarioLogado)
     ? Object.values(GERENCIAS)
@@ -37,69 +42,84 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
         bairros:   usuarioEditando.bairros   || [],
       })
       setFotoPreview(usuarioEditando.foto_perfil || null)
-      setFotoArquivo(null)
+      setFotoArquivo(null); setFotoOrigem(null); setAjustando(false); setPosY(20)
       setPerfis(getPerfisGerencia(usuarioEditando.gerencia || ''))
     } else {
       const gerenciaInicial = !isAdminGeral(usuarioLogado) ? usuarioLogado.gerencia : ''
-      setForm({ name:'', matricula:'', cpf:'', cargo:'', senha:'', role:'', gerencia: gerenciaInicial, email:'', telefone:'', bairros:[] })
-      setFotoPreview(null)
-      setFotoArquivo(null)
+      setForm({ name:'', matricula:'', cpf:'', cargo:'', senha:'', role:'', gerencia:gerenciaInicial, email:'', telefone:'', bairros:[] })
+      setFotoPreview(null); setFotoArquivo(null); setFotoOrigem(null); setAjustando(false); setPosY(20)
       setPerfis(gerenciaInicial ? getPerfisGerencia(gerenciaInicial) : [])
     }
     setErros({})
   }, [aberto, usuarioEditando?.id])
 
   function fmtMatricula(v) {
-    const n = String(v).replace(/\D/g, '')
-    return n.length <= 5 ? n : `${n.slice(0, 5)}-${n.slice(5)}`
+    const n = String(v).replace(/\D/g,'')
+    return n.length <= 5 ? n : `${n.slice(0,5)}-${n.slice(5)}`
   }
-
   function fmtCpf(v) {
-    const n = String(v).replace(/\D/g, '').slice(0, 11)
+    const n = String(v).replace(/\D/g,'').slice(0,11)
     if (n.length <= 3) return n
     if (n.length <= 6) return `${n.slice(0,3)}.${n.slice(3)}`
     if (n.length <= 9) return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`
     return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`
   }
-
   function set(campo, valor) {
     setForm(f => ({ ...f, [campo]: valor }))
     setErros(e => ({ ...e, [campo]: '' }))
   }
-
   function handleGerencia(gerencia) {
     setForm(f => ({ ...f, gerencia, role: '', bairros: [] }))
     setPerfis(getPerfisGerencia(gerencia))
     setErros(e => ({ ...e, gerencia: '', role: '' }))
   }
-
   function toggleBairro(b) {
     setForm(f => ({
       ...f,
       bairros: f.bairros.includes(b) ? f.bairros.filter(x => x !== b) : [...f.bairros, b],
     }))
-    setErros(e => ({ ...e, bairros: '' }))
   }
 
+  // Quando seleciona a foto — abre o ajuste antes de confirmar
   function handleFotoChange(e) {
     const file = e.target.files[0]
     if (!file) return
-    // Validação de formato
-    const formatosPermitidos = ['image/jpeg', 'image/png', 'image/webp']
-    if (!formatosPermitidos.includes(file.type)) {
-      mostrarToast('Formato inválido. Use JPG, PNG ou WebP.', 'erro')
-      e.target.value = ''
-      return
-    }
-    // Validação de tamanho (máx 5MB)
-    const MAX_MB = 5
-    if (file.size > MAX_MB * 1024 * 1024) {
-      mostrarToast(`Foto muito grande. Máximo ${MAX_MB}MB.`, 'erro')
-      e.target.value = ''
-      return
-    }
+    const objUrl = URL.createObjectURL(file)
+    setFotoOrigem(objUrl)
     setFotoArquivo(file)
-    setFotoPreview(URL.createObjectURL(file))
+    setAjustando(true)
+    setPosY(20)
+    e.target.value = ''
+  }
+
+  // Confirma o enquadramento — renderiza no canvas e salva como preview final
+  function confirmarEnquadramento() {
+    const img = imgAjusteRef.current
+    if (!img) return
+    const canvas = document.createElement('canvas')
+    // Saída em 400×533px (proporção 3×4)
+    canvas.width  = 400
+    canvas.height = 533
+    const ctx = canvas.getContext('2d')
+    const scale  = 400 / img.naturalWidth
+    const scaledH = img.naturalHeight * scale
+    const offsetY  = (posY / 100) * Math.max(0, scaledH - 533)
+    ctx.drawImage(img, 0, -offsetY, 400, scaledH)
+    canvas.toBlob(blob => {
+      const file = new File([blob], fotoArquivo.name, { type: 'image/jpeg' })
+      setFotoArquivo(file)
+      setFotoPreview(canvas.toDataURL('image/jpeg', 0.92))
+      setAjustando(false)
+      URL.revokeObjectURL(fotoOrigem)
+      setFotoOrigem(null)
+    }, 'image/jpeg', 0.92)
+  }
+
+  function cancelarAjuste() {
+    setAjustando(false)
+    setFotoOrigem(null)
+    setFotoArquivo(null)
+    URL.revokeObjectURL(fotoOrigem)
   }
 
   function validar() {
@@ -113,76 +133,52 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
     if (!form.gerencia)         e.gerencia   = 'Selecione o módulo'
     if (!form.role)             e.role       = 'Selecione o perfil'
     if (!usuarioEditando && !form.senha) e.senha = 'Senha obrigatória'
-    if (form.role === 'fiscal' && form.gerencia === 'obras' && form.bairros.length === 0) {
+    if (form.role === 'fiscal' && form.gerencia === 'obras' && form.bairros.length === 0)
       e.bairros = 'Atribua ao menos 1 bairro'
-    }
     setErros(e)
     return Object.keys(e).length === 0
   }
 
   async function salvar() {
     if (!validar()) { mostrarToast('Preencha todos os campos obrigatórios', 'erro'); return }
-
     const matriculaSoDigitos = apenasDigitos(form.matricula)
-
-    // Verifica matrícula duplicada
     try {
       const existentes = await query('usuarios', q => q.eq('matricula', matriculaSoDigitos))
-      const duplicada = existentes.filter(u => u.id !== (usuarioEditando?.id || ''))
+      const duplicada  = existentes.filter(u => u.id !== (usuarioEditando?.id || ''))
       if (duplicada.length > 0) {
-        setErros(e => ({ ...e, matricula: 'Matrícula já cadastrada para outro usuário' }))
-        mostrarToast('Matrícula já em uso', 'erro')
-        return
+        setErros(e => ({ ...e, matricula: 'Matrícula já cadastrada' }))
+        mostrarToast('Matrícula já em uso', 'erro'); return
       }
     } catch { /* segue */ }
 
     setSalvando(true)
     try {
-      // Define o ID do usuário
       const userId = usuarioEditando?.id || `user-${Date.now()}`
-
-      // Faz upload da foto ANTES de salvar o usuário
-      let fotoUrl = usuarioEditando?.foto_perfil || null
+      let fotoUrl  = usuarioEditando?.foto_perfil || null
       if (fotoArquivo) {
         try {
           const caminho = `perfis/${matriculaSoDigitos}_${Date.now()}.jpg`
           fotoUrl = await upload('fiscon-fotos', caminho, fotoArquivo)
-        } catch (uploadErr) {
-          console.warn('Erro no upload da foto:', uploadErr)
-          // Continua sem a foto
-        }
+        } catch { /* continua sem foto */ }
       }
-
-      // Cria/atualiza o usuário via RPC
       const resultado = await rpc('criar_usuario_seguro', {
-        p_id:        userId,
-        p_name:      form.name.trim(),
+        p_id: userId, p_name: form.name.trim(),
         p_matricula: matriculaSoDigitos,
         p_senha:     form.senha || '__manter__',
-        p_role:      form.role,
-        p_email:     form.email.trim(),
+        p_role:      form.role,  p_email: form.email.trim(),
         p_telefone:  form.telefone,
         p_endereco:  apenasDigitos(form.cpf),
-        p_bairros:   form.bairros,
-        p_ativo:     true,
+        p_bairros:   form.bairros, p_ativo: true,
         p_gerencia:  form.gerencia,
       })
       if (!resultado?.success) throw new Error('Falha ao salvar usuário')
-
-      // Atualiza cargo e foto diretamente na tabela
-      await update('usuarios', userId, {
-        cargo:       form.cargo.trim(),
-        foto_perfil: fotoUrl,
-      })
-
+      await update('usuarios', userId, { cargo: form.cargo.trim(), foto_perfil: fotoUrl })
       mostrarToast(usuarioEditando ? 'Usuário atualizado!' : 'Usuário criado!', 'sucesso')
       onSalvo()
     } catch (err) {
-      console.error('Erro ao salvar usuário:', err)
+      console.error(err)
       mostrarToast('Erro ao salvar. Tente novamente.', 'erro')
-    } finally {
-      setSalvando(false)
-    }
+    } finally { setSalvando(false) }
   }
 
   const ehFiscalObras = form.role === 'fiscal' && form.gerencia === 'obras'
@@ -191,43 +187,101 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
     <Modal aberto={aberto} onClose={onClose} titulo={usuarioEditando ? 'Editar Usuário' : 'Novo Usuário'}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-        {/* Foto de perfil */}
+        {/* Tela de ajuste de enquadramento */}
+        {ajustando && fotoOrigem && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', zIndex: 9999, gap: '16px', padding: '20px',
+          }}>
+            <div style={{ color: '#fff', fontWeight: '700', fontSize: '1rem' }}>
+              Ajuste o enquadramento da foto
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', textAlign: 'center' }}>
+              Use o slider para centralizar o rosto na área 3×4
+            </div>
+
+            {/* Preview 3×4 com a foto */}
+            <div style={{
+              width: '160px', height: '213px',
+              border: '3px solid #1A56DB', borderRadius: '6px',
+              overflow: 'hidden', background: '#000', position: 'relative',
+            }}>
+              <img
+                ref={imgAjusteRef}
+                src={fotoOrigem}
+                alt="Ajuste"
+                style={{
+                  width: '100%', position: 'absolute', left: 0,
+                  top: `${-posY * 0.8}%`,
+                  objectFit: 'fill',
+                }}
+              />
+            </div>
+
+            {/* Slider vertical */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '200px' }}>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>Posição vertical</div>
+              <input
+                type="range" min="0" max="100" value={posY}
+                onChange={e => setPosY(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#1A56DB' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={confirmarEnquadramento} style={{
+                background: '#1A56DB', color: '#fff', border: 'none',
+                borderRadius: '10px', padding: '12px 28px',
+                fontWeight: '700', fontSize: '0.95rem', cursor: 'pointer',
+              }}>
+                ✅ Confirmar
+              </button>
+              <button onClick={cancelarAjuste} style={{
+                background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none',
+                borderRadius: '10px', padding: '12px 28px',
+                fontWeight: '600', fontSize: '0.95rem', cursor: 'pointer',
+              }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Upload de foto — quadrado proporcional 3×4 */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
           <div
             onClick={() => inputFotoRef.current?.click()}
             style={{
-              width: '96px', height: '96px', borderRadius: '50%',
+              width: '120px', height: '160px', /* proporção 3×4 */
+              borderRadius: '6px',
               background: fotoPreview ? 'transparent' : '#F1F5F9',
               border: `3px dashed ${fotoPreview ? '#1A56DB' : '#CBD5E0'}`,
               overflow: 'hidden', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}
           >
             {fotoPreview
-              ? <img src={fotoPreview} alt="Foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '2rem' }}>📷</div>
-                  <div style={{ fontSize: '0.6rem', color: '#94A3B8', marginTop: '2px' }}>Clique para adicionar</div>
-                </div>
+              ? <img src={fotoPreview} alt="Foto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              : <>
+                  <div style={{ fontSize: '2rem', marginBottom: '4px' }}>📷</div>
+                  <div style={{ fontSize: '0.65rem', color: '#94A3B8', textAlign: 'center', padding: '0 8px' }}>
+                    Clique para<br/>adicionar foto
+                  </div>
+                </>
             }
           </div>
           {fotoPreview && (
-            <button
-              type="button"
-              onClick={() => inputFotoRef.current?.click()}
-              style={{ background: 'none', border: 'none', color: '#1A56DB', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer' }}
-            >
+            <button type="button" onClick={() => inputFotoRef.current?.click()} style={{
+              background: 'none', border: 'none', color: '#1A56DB',
+              fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer',
+            }}>
               Trocar foto
             </button>
           )}
-          <input
-            ref={inputFotoRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFotoChange}
-            style={{ display: 'none' }}
-          />
+          <input ref={inputFotoRef} type="file" accept="image/*" onChange={handleFotoChange} style={{ display: 'none' }} />
         </div>
 
         <Campo label="Nome completo *" erro={erros.name}>
@@ -249,35 +303,33 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <Campo label="E-mail *" erro={erros.email} style={{ flex: 1 }}>
-            <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="servidor@pmvc.ba.gov.br" />
+            <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@pmvc.ba.gov.br" />
           </Campo>
           <Campo label="Telefone *" erro={erros.telefone} style={{ flex: 1 }}>
             <MascaraInput tipo="telefone" value={form.telefone} onChange={v => set('telefone', v)} />
           </Campo>
         </div>
 
-        {/* Módulo */}
         <Campo label="Módulo *" erro={erros.gerencia}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {gerenciasDisponiveis.map(g => (
               <button key={g.id} type="button" onClick={() => handleGerencia(g.id)} style={{
                 background: form.gerencia === g.id ? g.fundo : '#fff',
                 border: `2px solid ${form.gerencia === g.id ? g.cor : '#E2E8F0'}`,
-                borderRadius: '10px', padding: '12px 14px',
+                borderRadius: '10px', padding: '10px 14px',
                 display: 'flex', alignItems: 'center', gap: '10px',
                 cursor: 'pointer', textAlign: 'left',
               }}>
-                <span style={{ fontSize: '1.2rem' }}>{g.emoji}</span>
+                <span style={{ fontSize: '1.1rem' }}>{g.emoji}</span>
                 <div>
-                  <div style={{ fontWeight: '600', fontSize: '0.88rem', color: form.gerencia === g.id ? g.cor : '#374151' }}>{g.nome}</div>
-                  {g.lei && <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>{g.lei}</div>}
+                  <div style={{ fontWeight: '600', fontSize: '0.85rem', color: form.gerencia === g.id ? g.cor : '#374151' }}>{g.nome}</div>
+                  {g.lei && <div style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{g.lei}</div>}
                 </div>
               </button>
             ))}
           </div>
         </Campo>
 
-        {/* Perfil */}
         {form.gerencia && perfis.length > 0 && (
           <Campo label="Perfil de acesso *" erro={erros.role}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -290,7 +342,7 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
                   cursor: 'pointer', textAlign: 'left',
                 }}>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: p.cor, flexShrink: 0 }} />
-                  <span style={{ fontWeight: '600', fontSize: '0.88rem', color: form.role === p.codigo ? p.cor : '#374151' }}>
+                  <span style={{ fontWeight: '600', fontSize: '0.85rem', color: form.role === p.codigo ? p.cor : '#374151' }}>
                     {p.nome}
                   </span>
                 </button>
@@ -299,11 +351,10 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
           </Campo>
         )}
 
-        {/* Bairros — fiscal de obras */}
         {ehFiscalObras && (
           <Campo label="Bairros sob responsabilidade *" erro={erros.bairros}>
             <div style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '6px' }}>
-              Selecione ao menos 1 bairro. Reclamações desses bairros serão atribuídas automaticamente.
+              Selecione ao menos 1 bairro.
             </div>
             <div style={{ maxHeight: '220px', overflowY: 'auto', border: '2px solid #E2E8F0', borderRadius: '10px', padding: '8px' }}>
               {BAIRROS_VDC.map(b => (
@@ -319,7 +370,7 @@ export default function UserFormModal({ aberto, onClose, usuarioEditando, usuari
                     background: form.bairros.includes(b) ? '#1A56DB' : '#fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    {form.bairros.includes(b) && <span style={{ color: '#fff', fontSize: '11px', fontWeight: '700', lineHeight: 1 }}>✓</span>}
+                    {form.bairros.includes(b) && <span style={{ color: '#fff', fontSize: '10px', fontWeight: '700' }}>✓</span>}
                   </div>
                   <span style={{
                     fontSize: '0.82rem',
