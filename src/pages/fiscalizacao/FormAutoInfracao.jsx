@@ -7,7 +7,7 @@ import InfracoesObras from './InfracoesObras.jsx'
 import InfracoesPosturas from './InfracoesPosturas.jsx'
 import Icon from '../../components/Icon.jsx'
 import { PRAZO_AUTO_DIAS, calcularDataVencimento } from '../../config/constants.js'
-import { INFO_MODULO } from '../../gerencia/GerenciaUI.jsx'
+import { imprimirTermica } from '../../utils/imprimirTermica.js'
 
 export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, notificacao }) {
   const fromRec = notificacao?.fromReclamacao
@@ -99,53 +99,7 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
     return registro
   }
 
-  function imprimirTermica(reg) {
-    const matFmt = mascaraMatricula(reg.matricula || '')
-    const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`https://fiscon.pmvc.ba.gov.br/portal?codigo=${reg.codigo_acesso}`)}`
-    const infracoes = (reg.infracoes || []).map(i => `<div style="margin:2px 0;font-size:10px;">• ${i.descricao}</div>`).join('')
 
-    const html = `<!DOCTYPE html><html><head><title>${reg.num}</title>
-    <style>
-      * { box-sizing:border-box; margin:0; padding:0; }
-      body { font-family:'Courier New',monospace; font-size:11px; width:58mm; padding:3mm; background:#fff; }
-      .c { text-align:center; } .l { border-top:1px dashed #000; margin:4px 0; }
-      .b { font-weight:bold; } .p { font-size:9px; }
-      img.br { width:18mm; height:18mm; } img.qr { width:22mm; height:22mm; }
-      @media print { @page { size:58mm auto; margin:0; } }
-    </style></head><body>
-    <div class="c"><img class="br" src="https://upload.wikimedia.org/wikipedia/commons/5/57/Bras%C3%A3o_Vitoria_da_Conquista.svg"/></div>
-    <div class="l"></div>
-    <div class="c b" style="font-size:12px;">AUTO DE INFRAÇÃO</div>
-    <div class="c b" style="font-size:13px;letter-spacing:1px;">${reg.num}</div>
-    <div class="c p">Data: ${reg.date}</div>
-    <div class="l"></div>
-    <div class="b">AUTUADO:</div>
-    <div>${reg.owner || '—'}</div>
-    ${reg.cpf ? `<div class="p">CPF/CNPJ: ${reg.cpf}</div>` : ''}
-    <div class="p">${reg.addr || '—'}${reg.bairro ? `, ${reg.bairro}` : ''}</div>
-    <div class="l"></div>
-    <div class="b">INFRAÇÕES:</div>
-    ${infracoes}
-    ${totalMulta > 0 ? `<div class="l"></div><div class="b">MULTA: R$ ${totalMulta.toFixed(2).replace('.',',')}</div>` : ''}
-    <div class="l"></div>
-    <div class="b">Prazo para defesa: 10 dias</div>
-    <div class="p">Vencimento: ${reg.prazo || '—'}</div>
-    <div class="l"></div>
-    <div class="c b">${reg.fiscal || '—'}</div>
-    <div class="c p">Mat.: ${matFmt}</div>
-    <div class="l"></div>
-    <div class="c">
-      <div class="p b">Portal do Cidadão:</div>
-      <img class="qr" src="${qrUrl}"/>
-      <div class="p">Código: <span class="b" style="letter-spacing:2px;">${reg.codigo_acesso || '—'}</span></div>
-    </div>
-    </body></html>`
-
-    const win = window.open('', '_blank')
-    win.document.write(html)
-    win.document.close()
-    setTimeout(() => { win.print(); win.close() }, 600)
-  }
 
   async function salvar() {
     if (!validar()) { mostrarToast('Preencha os campos obrigatórios', 'erro'); return }
