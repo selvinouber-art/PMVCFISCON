@@ -1,225 +1,251 @@
+// ============================================================
+// FISCON — Impressão Térmica 58mm
+// Usa Blob URL para evitar bloqueio de popup em mobile/Android
+// QR Code gerado via biblioteca JS (sem dependência de API externa)
+// @page FORA de @media print — obrigatório para 58mm funcionar
+// ============================================================
+
 import { mascaraMatricula } from '../components/MascaraInput.jsx'
 
-const BRASAO = 'https://upload.wikimedia.org/wikipedia/commons/5/57/Bras%C3%A3o_Vitoria_da_Conquista.svg'
+const BRASAO    = 'https://upload.wikimedia.org/wikipedia/commons/5/57/Bras%C3%A3o_Vitoria_da_Conquista.svg'
+const PORTAL    = 'https://fiscon-portal.pmvc.ba.gov.br'
 
-const INFO_MODULO = {
-  obras: {
-    secretaria: 'Sec. de Infraestrutura Urbana',
-    gerencia:   'Gerência de Fiscalização de Obras',
-  },
-  posturas: {
-    secretaria: 'Sec. de Serviços Públicos',
-    gerencia:   'Gerência de Fiscalização de Posturas',
-  },
+const INFO = {
+  obras:    { secretaria: 'Sec. Municipal de Infraestrutura Urbana', gerencia: 'Gerência de Fiscalização de Obras' },
+  posturas: { secretaria: 'Sec. Municipal de Serviços Públicos',     gerencia: 'Gerência de Fiscalização de Posturas' },
 }
 
 // ============================================================
-// CSS base para impressora térmica 58mm
-// Chave: @page FORA de @media print, html/body fixados em 58mm
-// sem nenhum container externo.
+// CSS 58mm — regras críticas para impressão correta
 // ============================================================
-function cssTermica() {
-  return `
-    /* Reset absoluto */
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+const CSS58 = `
+  @page { size: 58mm auto; margin: 0mm; }
 
-    /* @page PRECISA estar fora de @media print para funcionar */
-    @page {
-      size: 58mm auto;
-      margin: 0mm;
-    }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html {
-      width: 58mm;
-      margin: 0;
-      padding: 0;
-      background: #fff;
-    }
+  html {
+    width: 58mm;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
 
-    body {
-      width: 58mm;
-      max-width: 58mm;
-      margin: 0 auto;
-      padding: 2mm 2.5mm;
-      background: #fff;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 11px;
-      color: #000;
-      line-height: 1.35;
-    }
+  body {
+    font-family: monospace, 'Courier New', Courier;
+    font-size: 12px;
+    line-height: 1.35;
+    width: 58mm;
+    max-width: 58mm;
+    margin: 0 auto;
+    padding: 2mm 3mm;
+    background: #fff;
+    color: #000;
+  }
 
-    /* Garante que nada ultrapasse a largura */
-    * { max-width: 100%; }
+  * { max-width: 100%; }
+  img { display: block; max-width: 100%; }
 
-    img { display: block; }
+  .c   { text-align: center; }
+  .r   { text-align: right; }
+  .b   { font-weight: bold; }
+  .p   { font-size: 10px; }
+  .pp  { font-size: 9px; }
+  .xg  { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+  .hr  { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+  .hr2 { border: none; border-top: 2px solid #000; margin: 4px 0; }
+  .blk { margin: 2px 0; }
+  .box { border: 2px solid #000; padding: 2mm; text-align: center; margin: 2mm 0; }
 
-    .c  { text-align: center; }
-    .r  { text-align: right; }
-    .b  { font-weight: bold; }
-    .p  { font-size: 9px; }
-    .g  { font-size: 10px; }
-    .xg { font-size: 13px; letter-spacing: 1px; }
+  .brasao { width: 20mm; height: 20mm; margin: 0 auto 3px; }
+  .qr     { width: 28mm; height: 28mm; margin: 3px auto; }
 
-    .linha {
-      border: none;
-      border-top: 1px dashed #000;
-      margin: 3px 0;
-    }
+  /* Botão de impressão — não aparece no print */
+  #btn-imprimir {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: bold;
+    background: #001f5e;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+  }
 
-    .bloco { margin: 2px 0; }
-
-    .brasao {
-      width: 18mm;
-      height: 18mm;
-      margin: 0 auto 2px;
-    }
-
-    .qr {
-      width: 24mm;
-      height: 24mm;
-      margin: 2px auto;
-    }
-
-    /* Remove qualquer sombra/borda de print */
-    @media print {
-      html, body { background: #fff !important; }
-    }
-  `
-}
+  @media print {
+    html, body { background: #fff !important; }
+    #btn-imprimir { display: none !important; }
+    body * { visibility: visible; }
+  }
+`
 
 // ============================================================
-// Gera e abre a janela de impressão térmica
+// Exportação principal
 // ============================================================
 export function imprimirTermica(registro) {
   if (!registro) return
 
-  const info   = INFO_MODULO[registro.gerencia] || INFO_MODULO.obras
+  const info   = INFO[registro.gerencia] || INFO.obras
   const ehAuto = registro.type === 'auto'
   const matFmt = mascaraMatricula(registro.matricula || '')
-  const qrData = `https://fiscon-portal.pmvc.ba.gov.br/?codigo=${registro.codigo_acesso}`
-  const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrData)}&margin=2`
+  const portalUrl = `${PORTAL}/?codigo=${encodeURIComponent(registro.codigo_acesso || '')}`
 
+  // Infrações
   const infracoes = (registro.infracoes || [])
-    .map(i => `<div class="bloco g">• ${i.descricao}</div>`)
+    .map(i => `<div class="blk p">&#9642; ${i.descricao || i}</div>`)
     .join('')
 
-  const multaHtml = ehAuto && registro.multa && Number(registro.multa) > 0
-    ? `<hr class="linha"/><div class="b">MULTA: R$ ${Number(registro.multa).toFixed(2).replace('.', ',')}</div>`
+  // Multa — só auto
+  const multaBloco = ehAuto && registro.multa && Number(registro.multa) > 0
+    ? `<hr class="hr"/>
+       <div class="box b">MULTA: R$ ${Number(registro.multa).toFixed(2).replace('.', ',')}</div>`
     : ''
 
-  const prazoLabel = ehAuto
-    ? 'PRAZO PARA DEFESA: 10 DIAS'
-    : `PRAZO: ${registro.prazo || '—'}`
+  // Prazo
+  const prazoBloco = ehAuto
+    ? `<div class="c b">PRAZO PARA DEFESA: 10 DIAS</div>
+       <div class="c pp">Vencimento: ${registro.prazo || '—'}</div>`
+    : `<div class="c b">PRAZO: ${registro.prazo || '—'}</div>`
+
+  // Testemunhas — só auto
+  const testemunhasBloco = ehAuto && (registro.testemunha1 || registro.testemunha2)
+    ? `<hr class="hr"/>
+       <div style="display:flex;gap:3mm">
+         <div style="flex:1;border-top:1px solid #000;padding-top:1.5mm;text-align:center;font-size:10px">
+           <div style="height:8mm"></div>
+           <div class="b pp">${registro.testemunha1 || 'Testemunha 1'}</div>
+         </div>
+         <div style="flex:1;border-top:1px solid #000;padding-top:1.5mm;text-align:center;font-size:10px">
+           <div style="height:8mm"></div>
+           <div class="b pp">${registro.testemunha2 || 'Testemunha 2'}</div>
+         </div>
+       </div>
+       ${registro.obs_recusa ? `<div class="pp blk">Obs: ${registro.obs_recusa}</div>` : ''}`
+    : ''
+
+  // QR block — usa lib qrcode.js para gerar localmente
+  const qrBlock = registro.codigo_acesso
+    ? `<hr class="hr"/>
+       <div class="c b p">Portal do Cidadão — Envie sua defesa:</div>
+       <div class="c"><canvas id="qr-canvas"></canvas></div>
+       <div class="box b" style="font-size:16px;letter-spacing:3px;">${registro.codigo_acesso}</div>
+       <div class="c pp">${PORTAL.replace('https://', '')}</div>`
+    : ''
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>${registro.num}</title>
-  <style>${cssTermica()}</style>
+  <title>${registro.num || 'Documento'}</title>
+  <style>${CSS58}</style>
 </head>
 <body>
 
-  <!-- Brasão -->
+  <!-- Cabeçalho -->
   <div class="c">
-    <img class="brasao" src="${BRASAO}" alt=""/>
+    <img class="brasao" src="${BRASAO}" alt="Brasão PMVC"/>
   </div>
+  <div class="c b p">Prefeitura Municipal de</div>
+  <div class="c b p">Vitória da Conquista</div>
+  <div class="c pp">${info.secretaria}</div>
+  <div class="c pp">${info.gerencia}</div>
 
-  <!-- Órgão -->
-  <div class="c p">${info.secretaria}</div>
-  <div class="c p">${info.gerencia}</div>
-
-  <hr class="linha"/>
+  <hr class="hr2"/>
 
   <!-- Tipo e número -->
-  <div class="c b" style="font-size:12px;">${ehAuto ? 'AUTO DE INFRAÇÃO' : 'NOTIFICAÇÃO PRELIMINAR'}</div>
-  <div class="c b xg">${registro.num}</div>
-  <div class="c p">Data: ${registro.date}</div>
+  <div class="c b" style="font-size:13px;">${ehAuto ? 'AUTO DE INFRAÇÃO' : 'NOTIFICAÇÃO PRELIMINAR'}</div>
+  <div class="c xg">${registro.num || '—'}</div>
+  <div class="c pp">Data: ${registro.date || new Date().toLocaleDateString('pt-BR')}</div>
 
-  <hr class="linha"/>
+  <hr class="hr"/>
 
-  <!-- Notificado -->
-  <div class="b">NOTIFICADO:</div>
-  <div class="bloco">${registro.owner || '—'}</div>
-  ${registro.cpf ? `<div class="p">CPF/CNPJ: ${registro.cpf}</div>` : ''}
-  <div class="p">${registro.addr || '—'}${registro.bairro ? `, ${registro.bairro}` : ''}</div>
+  <!-- Dados do notificado -->
+  <div class="b p">DADOS DO ${ehAuto ? 'AUTUADO' : 'NOTIFICADO'}:</div>
+  <div class="blk">Nome: <span class="b">${registro.owner || '—'}</span></div>
+  ${registro.cpf ? `<div class="blk pp">CPF/CNPJ: ${registro.cpf}</div>` : ''}
+  <div class="blk pp">${registro.addr || '—'}${registro.bairro ? `, ${registro.bairro}` : ''}</div>
+  ${registro.loteamento ? `<div class="blk pp">Lot.: ${registro.loteamento}</div>` : ''}
 
-  <hr class="linha"/>
+  <hr class="hr"/>
 
   <!-- Infrações -->
-  <div class="b">INFRAÇÕES:</div>
+  <div class="b p">${ehAuto ? 'INFRAÇÕES:' : 'IRREGULARIDADE:'}</div>
   ${infracoes}
+  ${registro.descricao ? `<div class="blk pp">Obs: ${registro.descricao}</div>` : ''}
 
-  ${multaHtml}
+  ${multaBloco}
 
-  <hr class="linha"/>
+  <hr class="hr"/>
 
   <!-- Prazo -->
-  <div class="b">${prazoLabel}</div>
-  ${registro.prazo && ehAuto ? `<div class="p">Vencimento: ${registro.prazo}</div>` : ''}
+  ${prazoBloco}
 
-  <hr class="linha"/>
+  ${testemunhasBloco}
+
+  <hr class="hr"/>
 
   <!-- Fiscal centralizado -->
   <div class="c b">${registro.fiscal || '—'}</div>
-  <div class="c p">Mat.: ${matFmt}</div>
+  <div class="c pp">Mat.: ${matFmt}</div>
+  <div class="c pp">Agente de Fiscalização</div>
 
-  <hr class="linha"/>
+  ${qrBlock}
 
-  <!-- QR Code e código de acesso -->
-  <div class="c">
-    <div class="p b" style="margin-bottom:2px;">Portal do Cidadão — Acesse sua defesa:</div>
-    <img class="qr" src="${qrUrl}" alt="QR Code"/>
-    <div class="p">Código de acesso:</div>
-    <div class="b" style="font-size:14px; letter-spacing:3px; margin-top:1px;">${registro.codigo_acesso || '—'}</div>
-    <div class="p" style="margin-top:2px;">fiscon-portal.pmvc.ba.gov.br</div>
-  </div>
+  <hr class="hr"/>
+  <div class="c pp">FISCON — Vitória da Conquista — BA</div>
+  <div class="c pp">${new Date().getFullYear()}</div>
 
-  <hr class="linha"/>
-  <div class="c p">Vitória da Conquista — BA</div>
-  <div class="c p">PMVC — FISCON ${new Date().getFullYear()}</div>
+  <button id="btn-imprimir" onclick="window.print()">🖨️ IMPRIMIR</button>
 
+  <!-- QRCode.js — gera QR localmente sem API externa -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"><\/script>
+  <script>
+    ${registro.codigo_acesso ? `
+    window.addEventListener('load', function() {
+      var canvas = document.getElementById('qr-canvas')
+      if (canvas && typeof QRCode !== 'undefined') {
+        QRCode.toCanvas(canvas, '${portalUrl}', {
+          width: 106,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' }
+        }, function(err) {
+          if (err) console.error(err)
+          setTimeout(function() { window.print() }, 600)
+        })
+      } else {
+        setTimeout(function() { window.print() }, 400)
+      }
+    })
+    ` : `
+    window.addEventListener('load', function() {
+      setTimeout(function() { window.print() }, 400)
+    })
+    `}
+  <\/script>
 </body>
 </html>`
 
-  abrirJanelaImpressao(html)
+  abrirBlob(html)
 }
 
 // ============================================================
-// Abre a janela e aciona o diálogo de impressão
+// Abre via Blob URL — evita bloqueio de popup no Chrome mobile
 // ============================================================
-function abrirJanelaImpressao(html) {
-  // Tenta abrir popup (desktop)
-  const win = window.open('', '_blank', 'width=300,height=600,menubar=no,toolbar=no,location=no,status=no')
+function abrirBlob(html) {
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const url  = URL.createObjectURL(blob)
+  const tab  = window.open(url, '_blank')
 
-  if (win) {
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-
-    // Aguarda imagens carregarem antes de imprimir
-    win.onload = () => {
-      setTimeout(() => {
-        win.focus()
-        win.print()
-        // Fecha após imprimir (alguns navegadores ignoram)
-        setTimeout(() => win.close(), 1500)
-      }, 300)
-    }
-
-    // Fallback: se onload não disparar
-    setTimeout(() => {
-      if (!win.closed) {
-        win.focus()
-        win.print()
-      }
-    }, 1200)
-  } else {
-    // Fallback mobile: abre em nova aba
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url  = URL.createObjectURL(blob)
-    window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 30000)
+  if (!tab) {
+    alert(
+      'Permita pop-ups para este site e tente novamente.\n\n' +
+      'Chrome: toque no ícone 🔒 na barra de endereço → Permitir pop-ups.'
+    )
   }
+
+  // Libera memória após 60 segundos
+  setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
