@@ -20,6 +20,9 @@ import FormNotificacao from './pages/fiscalizacao/FormNotificacao.jsx'
 import FormAutoInfracao from './pages/fiscalizacao/FormAutoInfracao.jsx'
 import AdminScreen from './pages/admin/AdminScreen.jsx'
 import AuditoriaScreen from './pages/admin/AuditoriaScreen.jsx'
+import RelatoriosScreen from './pages/admin/RelatoriosScreen.jsx'
+import PrivacidadePage from './pages/admin/PrivacidadePage.jsx'
+import BackupPage from './pages/admin/BackupPage.jsx'
 import PerfilModal from './pages/perfil/PerfilModal.jsx'
 import MaisScreen from './pages/MaisScreen.jsx'
 
@@ -40,7 +43,6 @@ export default function App() {
   useEffect(() => {
     if (!usuario) return
     const parar = startActivityTracking()
-    // Carrega badge de reclamações para fiscal
     if (isFiscal(usuario)) carregarBadge(usuario)
     return parar
   }, [usuario])
@@ -48,8 +50,7 @@ export default function App() {
   async function carregarBadge(u) {
     try {
       const dados = await query('reclamacoes', q =>
-        q.eq('fiscal_matricula', u.matricula)
-         .in('status', ['nova', 'em_atendimento'])
+        q.eq('fiscal_matricula', u.matricula).in('status', ['nova', 'em_atendimento'])
       )
       setBadgeReclamacoes(dados?.length || 0)
     } catch { /* silencioso */ }
@@ -63,7 +64,6 @@ export default function App() {
     setPaginaState(pag)
     setPaginaParams(params)
     window.scrollTo(0, 0)
-    // Atualiza badge ao sair da tela de reclamações
     if (pag !== 'reclamacoes' && usuario && isFiscal(usuario)) {
       setTimeout(() => carregarBadge(usuario), 500)
     }
@@ -111,6 +111,9 @@ export default function App() {
       case 'novo-auto':        return <FormAutoInfracao {...props} notificacao={paginaParams} />
       case 'admin':            return <AdminScreen {...props} />
       case 'auditoria':        return <AuditoriaScreen {...props} />
+      case 'relatorios':       return <RelatoriosScreen {...props} />
+      case 'privacidade':      return <PrivacidadePage {...props} />
+      case 'backup':           return <BackupPage {...props} />
       case 'perfil':           return <PerfilModal {...props} />
       case 'mais':             return <MaisScreen {...props} />
       default:                 return <Dashboard {...props} />
@@ -142,13 +145,12 @@ export default function App() {
 function getAbasNav(u, badge = 0) {
   const role = u?.role
   const base = [{ id: 'dashboard', label: 'Início', icone: 'home' }]
-
   if (role === 'fiscal') return [
     ...base,
-    { id: 'registros',   label: 'Registros',     icone: 'file' },
-    { id: 'reclamacoes', label: 'Reclamações',    icone: 'phone', badge },
-    { id: 'prazos',      label: 'Prazos',         icone: 'clock' },
-    { id: 'mais',        label: 'Mais',           icone: 'settings' },
+    { id: 'registros',   label: 'Registros',  icone: 'file' },
+    { id: 'reclamacoes', label: 'Reclamações', icone: 'phone', badge },
+    { id: 'prazos',      label: 'Prazos',      icone: 'clock' },
+    { id: 'mais',        label: 'Mais',        icone: 'settings' },
   ]
   if (role === 'balcao') return [
     ...base,

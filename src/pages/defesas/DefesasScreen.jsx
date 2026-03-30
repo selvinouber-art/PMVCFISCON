@@ -3,6 +3,7 @@ import { query, update, insert } from '../../config/supabase.js'
 import Icon from '../../components/Icon.jsx'
 import Modal from '../../components/Modal.jsx'
 import { isFiscal, isAdminGeral, podeJulgarDefesas } from '../../gerencia/gerencia.js'
+import { imprimirDefesaOficial } from '../../impressao/DocumentoPDF.jsx'
 
 const STATUS = {
   pendente:   { fundo: '#FEF3C7', cor: '#B45309', label: 'Pendente' },
@@ -10,33 +11,31 @@ const STATUS = {
   indeferida: { fundo: '#FEE2E2', cor: '#B91C1C', label: 'Indeferida' },
 }
 
+const ABAS = [
+  { id: 'pendente',   label: 'Pendentes',   cor: '#B45309', fundo: '#FEF3C7' },
+  { id: 'deferida',   label: 'Deferidas',   cor: '#166534', fundo: '#F0FDF4' },
+  { id: 'indeferida', label: 'Indeferidas', cor: '#B91C1C', fundo: '#FEE2E2' },
+]
+
 export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
   const [defesas, setDefesas]         = useState([])
-  const [meusIds, setMeusIds]         = useState(null) // IDs dos registros do fiscal
+  const [meusIds, setMeusIds]         = useState(null)
   const [carregando, setCarregando]   = useState(true)
   const [selecionada, setSelecionada] = useState(null)
   const [parecer, setParecer]         = useState('')
   const [julgando, setJulgando]       = useState(false)
+  const [abaAtiva, setAbaAtiva]       = useState('pendente')
 
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
     setCarregando(true)
     try {
-      // Se fiscal, busca primeiro os IDs dos seus registros
       if (isFiscal(usuario)) {
-        const meuRecs = await query('records', q =>
-          q.eq('matricula', usuario.matricula).select('id')
-        )
+        const meuRecs = await query('records', q => q.eq('matricula', usuario.matricula).select('id'))
         const ids = (meuRecs || []).map(r => r.id)
         setMeusIds(ids)
-
-        if (ids.length === 0) {
-          setDefesas([])
-          setCarregando(false)
-          return
-        }
-
+        if (ids.length === 0) { setDefesas([]); setCarregando(false); return }
         const todas = await query('defesas', q => {
           let qr = q.order('created_at', { ascending: false })
           if (!isAdminGeral(usuario)) qr = qr.eq('gerencia', usuario.gerencia)
@@ -52,7 +51,7 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
         setDefesas(dados || [])
       }
     } catch (err) {
-      console.error('Erro ao carregar defesas:', err)
+      console.error(err)
       mostrarToast('Erro ao carregar defesas', 'erro')
     } finally {
       setCarregando(false)
@@ -64,23 +63,23 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
     setJulgando(true)
     try {
       await update('defesas', selecionada.id, {
-        status: decisao,
+        status:      decisao,
         parecer,
         julgado_por: usuario.name,
-        julgado_em: new Date().toLocaleDateString('pt-BR'),
+        julgado_em:  new Date().toLocaleDateString('pt-BR'),
       })
       await insert('logs', {
-        gerencia: usuario.gerencia,
-        acao: `DEFESA_${decisao.toUpperCase()}`,
-        detalhe: `Defesa de ${selecionada.record_num} ${decisao} por ${usuario.name}. Parecer: ${parecer}`,
-        usuario: usuario.name,
+        gerencia:  usuario.gerencia,
+        acao:      `DEFESA_${decisao.toUpperCase()}`,
+        detalhe:   `Defesa de ${selecionada.record_num} ${decisao} por ${usuario.name}. Parecer: ${parecer}`,
+        usuario:   usuario.name,
       })
       mostrarToast(`Defesa ${decisao}!`, 'sucesso')
       setSelecionada(null)
       setParecer('')
       carregar()
     } catch (err) {
-      console.error('Erro ao julgar defesa:', err)
+      console.error(err)
       mostrarToast('Erro ao julgar', 'erro')
     } finally {
       setJulgando(false)
@@ -88,6 +87,15 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
   }
 
   const podeJulgar = podeJulgarDefesas(usuario)
+
+  // Contagem por aba
+  const contagem = {
+    pendente:   defesas.filter(d => d.status === 'pendente').length,
+    deferida:   defesas.filter(d => d.status === 'deferida').length,
+    indeferida: defesas.filter(d => d.status === 'indeferida').length,
+  }
+
+  const filtradas = defesas.filter(d => d.status === abaAtiva)
 
   return (
     <div style={{ padding: '16px' }}>
@@ -103,21 +111,53 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
         </div>
       </div>
 
+      {/* Abas de status */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto' }}>
+        {ABAS.map(aba => {
+          const ativo = abaAtiva === aba.id
+          const qtd   = contagem[aba.id]
+          return (
+            <button key={aba.id} onClick={() => setAbaAtiva(aba.id)} style={{
+              padding: '8px 16px', borderRadius: '10px', whiteSpace: 'nowrap',
+              background: ativo ? aba.fundo : '#fff',
+              border: `2px solid ${ativo ? aba.cor : '#E2E8F0'}`,
+              color: ativo ? aba.cor : '#64748B',
+              fontWeight: ativo ? '700' : '500',
+              fontSize: '0.85rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '8px',
+            }}>
+              {aba.label}
+              {qtd > 0 && (
+                <span style={{
+                  background: ativo ? aba.cor : '#E2E8F0',
+                  color: ativo ? '#fff' : '#64748B',
+                  fontSize: '0.7rem', fontWeight: '700',
+                  borderRadius: '999px', padding: '1px 8px',
+                  minWidth: '20px', textAlign: 'center',
+                }}>
+                  {qtd}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       {carregando ? (
         <p style={{ color: '#94A3B8', textAlign: 'center', padding: '32px' }}>Carregando...</p>
-      ) : defesas.length === 0 ? (
+      ) : filtradas.length === 0 ? (
         <div style={{ background: '#fff', border: '2px dashed #E2E8F0', borderRadius: '14px', padding: '32px', textAlign: 'center', color: '#94A3B8' }}>
           <Icon name="shield" size={32} color="#CBD5E0" style={{ margin: '0 auto 12px' }} />
-          <div>Nenhuma defesa recebida</div>
+          <div>Nenhuma defesa {abaAtiva === 'pendente' ? 'pendente' : abaAtiva === 'deferida' ? 'deferida' : 'indeferida'}.</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {defesas.map(def => {
+          {filtradas.map(def => {
             const sc = STATUS[def.status] || STATUS.pendente
             return (
               <div key={def.id}
                 onClick={() => { setSelecionada(def); setParecer(def.parecer || '') }}
-                style={{ background: '#fff', border: '2px solid #E2E8F0', borderRadius: '14px', padding: '14px', cursor: 'pointer' }}
+                style={{ background: '#fff', border: '2px solid #E2E8F0', borderLeft: `4px solid ${sc.cor}`, borderRadius: '14px', padding: '14px', cursor: 'pointer' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.9rem', color: '#1A56DB' }}>{def.record_num}</span>
@@ -126,9 +166,11 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
                   </span>
                 </div>
                 <div style={{ fontSize: '0.82rem', color: '#374151' }}>{def.nome}</div>
+                {def.num && <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '2px' }}>Protocolo: {def.num}</div>}
                 {def.cpf && <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>CPF: {def.cpf}</div>}
-                <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
-                  {def.created_at ? new Date(def.created_at).toLocaleDateString('pt-BR') : ''}
+                <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{def.created_at ? new Date(def.created_at).toLocaleDateString('pt-BR') : ''}</span>
+                  {def.julgado_por && <span>Julgado por: {def.julgado_por}</span>}
                 </div>
               </div>
             )
@@ -140,9 +182,10 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
         {selecionada && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <InfoBloco label="Defensor" valor={`${selecionada.nome}${selecionada.cpf ? ` — CPF: ${selecionada.cpf}` : ''}`} />
+            {selecionada.num && <InfoBloco label="Protocolo" valor={selecionada.num} />}
             <div>
               <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginBottom: '6px' }}>Texto da defesa</div>
-              <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '12px', fontSize: '0.85rem', color: '#374151', lineHeight: 1.6 }}>
+              <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '12px', fontSize: '0.85rem', color: '#374151', lineHeight: 1.6, maxHeight: '200px', overflowY: 'auto' }}>
                 {selecionada.texto}
               </div>
             </div>
@@ -191,6 +234,14 @@ export default function DefesasScreen({ usuario, mostrarToast, setPagina }) {
                 ⏳ Aguardando julgamento pela Gerência
               </div>
             )}
+
+            {/* Imprimir defesa A4 */}
+            <button onClick={() => imprimirDefesaOficial(selecionada, null)} style={{
+              background: '#F8FAFC', color: '#374151', border: '2px solid #E2E8F0',
+              borderRadius: '10px', padding: '10px', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer',
+            }}>
+              📄 Imprimir Defesa (A4)
+            </button>
           </div>
         )}
       </Modal>

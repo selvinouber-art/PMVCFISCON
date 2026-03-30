@@ -10,16 +10,16 @@ import { PRAZOS_NOTIFICACAO, calcularDataVencimento } from '../../config/constan
 import { imprimirTermica } from '../../utils/imprimirTermica.js'
 
 export default function FormNotificacao({ usuario, mostrarToast, setPagina, params }) {
-  // Pré-preenche endereço da reclamação, mas NÃO a descrição
   const fromRec = params?.fromReclamacao
 
   const [form, setForm] = useState({
     owner:      fromRec?.reclamado  || '',
     cpf:        '',
     addr:       fromRec?.endereco   || '',
+    numero:     '',
     bairro:     fromRec?.bairro     || '',
     loteamento: '',
-    descricao:  '',   // nunca pré-preenchido
+    descricao:  '',
     prazoDias:  '',
     infracoes:  [],
   })
@@ -53,32 +53,38 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
     } catch { mostrarToast('Erro ao enviar foto', 'erro') }
   }
 
+  // Validação: nome, endereço, prazo e ao menos 1 infração são obrigatórios
   function validar() {
     const e = {}
-    if (!form.owner.trim())          e.owner     = 'Nome obrigatório'
-    if (!form.addr.trim())           e.addr      = 'Endereço obrigatório'
+    if (!form.owner.trim())          e.owner     = 'Nome do proprietário é obrigatório'
+    if (!form.addr.trim())           e.addr      = 'Endereço é obrigatório'
+    if (!form.prazoDias)             e.prazoDias = 'Selecione o prazo para regularização'
     if (form.infracoes.length === 0) e.infracoes = 'Selecione ao menos uma infração'
-    if (!form.prazoDias)             e.prazoDias = 'Selecione o prazo'
     setErros(e)
-    return Object.keys(e).length === 0
+    if (Object.keys(e).length > 0) {
+      mostrarToast('Preencha os campos obrigatórios marcados em vermelho', 'erro')
+      return false
+    }
+    return true
   }
 
   async function executarSalvar() {
-    const anoAtual  = new Date().getFullYear()
-    const prefixo   = usuario.gerencia === 'obras' ? 'NP-OB' : 'NP-PO'
+    const anoAtual   = new Date().getFullYear()
+    const prefixo    = usuario.gerencia === 'obras' ? 'NP-OB' : 'NP-PO'
     const existentes = await query('records', q =>
       q.eq('gerencia', usuario.gerencia).eq('type', 'notif').like('num', `${prefixo}-%/${anoAtual}`)
     )
-    const seq          = (existentes?.length || 0) + 1
-    const num          = gerarNumDocumento('notif', usuario.gerencia, seq)
+    const seq           = (existentes?.length || 0) + 1
+    const num           = gerarNumDocumento('notif', usuario.gerencia, seq)
     const codigo_acesso = gerarCodigoAcesso()
-    const prazoData    = calcularDataVencimento(Number(form.prazoDias))
-    const id           = `notif-${Date.now()}`
+    const prazoData     = calcularDataVencimento(Number(form.prazoDias))
+    const id            = `notif-${Date.now()}`
+    const enderecoCompleto = form.addr.trim() + (form.numero ? `, nº ${form.numero.trim()}` : '')
 
     const registro = {
       id, num, type: 'notif', gerencia: usuario.gerencia,
       owner: form.owner.trim(), cpf: apenasDigitos(form.cpf),
-      addr: form.addr.trim(), bairro: form.bairro, loteamento: form.loteamento,
+      addr: enderecoCompleto, bairro: form.bairro, loteamento: form.loteamento,
       descricao: form.descricao, prazo: prazoData,
       infracoes: form.infracoes, fiscal: usuario.name, matricula: usuario.matricula,
       status: 'Pendente', codigo_acesso,
@@ -90,16 +96,14 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
     await insert('records', registro)
     await insert('logs', {
       gerencia: usuario.gerencia, acao: 'NOVA_NOTIFICACAO',
-      detalhe: `${num} emitida. Prop.: ${form.owner}. End.: ${form.addr}. Infrações: ${form.infracoes.length}. Prazo: ${prazoData}. Fiscal: ${usuario.name} (Mat. ${mascaraMatricula(usuario.matricula)}).`,
+      detalhe: `${num} emitida. Prop.: ${form.owner}. End.: ${enderecoCompleto}. Infrações: ${form.infracoes.length}. Prazo: ${prazoData}. Fiscal: ${usuario.name} (Mat. ${mascaraMatricula(usuario.matricula)}).`,
       usuario: usuario.name,
     })
     return registro
   }
 
-
-
   async function salvar() {
-    if (!validar()) { mostrarToast('Preencha os campos obrigatórios', 'erro'); return }
+    if (!validar()) return
     setSalvando(true)
     try {
       await executarSalvar()
@@ -112,7 +116,7 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
   }
 
   async function salvarEImprimir() {
-    if (!validar()) { mostrarToast('Preencha os campos obrigatórios', 'erro'); return }
+    if (!validar()) return
     setSalvando(true)
     try {
       const registro = await executarSalvar()
@@ -143,7 +147,7 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
 
       {fromRec && (
         <div style={{ background: '#EBF5FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '0.82rem', color: '#1A56DB' }}>
-          📋 Pré-preenchido da reclamação <strong>{fromRec.protocolo}</strong> — endereço e nome
+          📋 Pré-preenchido da reclamação <strong>{fromRec.protocolo}</strong> — nome, endereço e bairro
         </div>
       )}
 
@@ -159,9 +163,14 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
         </Secao>
 
         <Secao titulo="Endereço">
-          <Campo label="Endereço completo *" erro={erros.addr}>
-            <input value={form.addr} onChange={e => set('addr', e.target.value)} placeholder="Rua, número" />
-          </Campo>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Campo label="Endereço / Rua *" erro={erros.addr} style={{ flex: 3 }}>
+              <input value={form.addr} onChange={e => set('addr', e.target.value)} placeholder="Rua, Av., Travessa..." />
+            </Campo>
+            <Campo label="Número" style={{ flex: 1 }}>
+              <input value={form.numero} onChange={e => set('numero', e.target.value)} placeholder="Nº" />
+            </Campo>
+          </div>
           <Campo label="Bairro">
             {ehObras && bairros.length > 0 ? (
               <select value={form.bairro} onChange={e => set('bairro', e.target.value)}>
@@ -187,7 +196,11 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
         </Secao>
 
         <Secao titulo="Infrações *">
-          {erros.infracoes && <div style={{ background: '#FEE2E2', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#B91C1C' }}>{erros.infracoes}</div>}
+          {erros.infracoes && (
+            <div style={{ background: '#FEE2E2', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#B91C1C', fontWeight: '600' }}>
+              ⚠️ {erros.infracoes}
+            </div>
+          )}
           {ehObras
             ? <InfracoesObras selecionadas={form.infracoes} onChange={v => set('infracoes', v)} />
             : <InfracoesPosturas selecionadas={form.infracoes} onChange={v => set('infracoes', v)} />
@@ -204,7 +217,7 @@ export default function FormNotificacao({ usuario, mostrarToast, setPagina, para
               {PRAZOS_NOTIFICACAO.map(p => (
                 <button key={p.valor} type="button" onClick={() => set('prazoDias', p.valor)} style={{
                   flex: 1, padding: '10px 6px', borderRadius: '10px',
-                  border: `2px solid ${form.prazoDias === p.valor ? '#1A56DB' : '#E2E8F0'}`,
+                  border: `2px solid ${form.prazoDias === p.valor ? '#1A56DB' : erros.prazoDias ? '#B91C1C' : '#E2E8F0'}`,
                   background: form.prazoDias === p.valor ? '#EBF5FF' : '#fff',
                   color: form.prazoDias === p.valor ? '#1A56DB' : '#374151',
                   fontWeight: form.prazoDias === p.valor ? '700' : '500',
@@ -262,12 +275,12 @@ function Secao({ titulo, children }) {
   )
 }
 
-function Campo({ label, children, erro }) {
+function Campo({ label, children, erro, style = {} }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...style }}>
       {label && <label style={{ fontSize: '0.82rem', fontWeight: '600', color: '#374151' }}>{label}</label>}
       {children}
-      {erro && <span style={{ fontSize: '0.72rem', color: '#B91C1C' }}>{erro}</span>}
+      {erro && <span style={{ fontSize: '0.72rem', color: '#B91C1C', fontWeight: '600' }}>⚠️ {erro}</span>}
     </div>
   )
 }

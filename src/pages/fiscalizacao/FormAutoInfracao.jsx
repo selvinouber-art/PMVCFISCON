@@ -16,6 +16,7 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
     owner:       notificacao?.owner || fromRec?.reclamado || '',
     cpf:         notificacao?.cpf   || '',
     addr:        notificacao?.addr  || fromRec?.endereco  || '',
+    numero:      '',
     bairro:      notificacao?.bairro || fromRec?.bairro   || '',
     descricao:   notificacao?.descricao || '',
     infracoes:   notificacao?.infracoes || [],
@@ -55,14 +56,21 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
     } catch { mostrarToast('Erro ao enviar foto', 'erro') }
   }
 
+  // Auto de infração: TODOS os campos obrigatórios
   function validar() {
     const e = {}
-    if (!form.owner.trim())          e.owner     = 'Nome obrigatório'
-    if (!form.addr.trim())           e.addr      = 'Endereço obrigatório'
-    if (!apenasDigitos(form.cpf))    e.cpf       = 'CPF/CNPJ obrigatório'
+    if (!form.owner.trim())          e.owner     = 'Nome do infrator é obrigatório'
+    if (!apenasDigitos(form.cpf))    e.cpf       = 'CPF/CNPJ é obrigatório'
+    if (!form.addr.trim())           e.addr      = 'Endereço é obrigatório'
+    if (!form.bairro)                e.bairro    = 'Bairro é obrigatório'
     if (form.infracoes.length === 0) e.infracoes = 'Selecione ao menos uma infração'
+    if (!form.descricao.trim())      e.descricao = 'Descrição das circunstâncias é obrigatória'
     setErros(e)
-    return Object.keys(e).length === 0
+    if (Object.keys(e).length > 0) {
+      mostrarToast('Preencha todos os campos obrigatórios', 'erro')
+      return false
+    }
+    return true
   }
 
   async function executarSalvar() {
@@ -75,11 +83,12 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
     const num          = gerarNumDocumento('auto', usuario.gerencia, seq)
     const codigo_acesso = gerarCodigoAcesso()
     const id           = `auto-${Date.now()}`
+    const enderecoCompleto = form.addr.trim() + (form.numero ? `, nº ${form.numero.trim()}` : '')
 
     const registro = {
       id, num, type: 'auto', gerencia: usuario.gerencia,
       owner: form.owner.trim(), cpf: apenasDigitos(form.cpf),
-      addr: form.addr.trim(), bairro: form.bairro, descricao: form.descricao,
+      addr: enderecoCompleto, bairro: form.bairro, descricao: form.descricao,
       infracoes: form.infracoes, multa: totalMulta.toFixed(2),
       testemunha1: form.testemunha1, testemunha2: form.testemunha2, obs_recusa: form.obs_recusa,
       fiscal: usuario.name, matricula: usuario.matricula,
@@ -99,10 +108,8 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
     return registro
   }
 
-
-
   async function salvar() {
-    if (!validar()) { mostrarToast('Preencha os campos obrigatórios', 'erro'); return }
+    if (!validar()) return
     setSalvando(true)
     try {
       await executarSalvar()
@@ -115,7 +122,7 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
   }
 
   async function salvarEImprimir() {
-    if (!validar()) { mostrarToast('Preencha os campos obrigatórios', 'erro'); return }
+    if (!validar()) return
     setSalvando(true)
     try {
       const registro = await executarSalvar()
@@ -137,7 +144,7 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
         <div>
           <h2 style={{ fontSize: '1.2rem', color: '#1E293B', margin: 0 }}>Auto de Infração</h2>
           <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '2px' }}>
-            {usuario.name} — Mat. {mascaraMatricula(usuario.matricula)}
+            {usuario.name} — Mat. {mascaraMatricula(usuario.matricula)} — <span style={{ color: '#B91C1C', fontWeight: '600' }}>Todos os campos são obrigatórios</span>
           </div>
         </div>
       </div>
@@ -150,19 +157,25 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-        <Secao titulo="Infrator">
+        <Secao titulo="Infrator *">
           <Campo label="Nome completo *" erro={erros.owner}>
             <input value={form.owner} onChange={e => set('owner', e.target.value)} placeholder="Nome do infrator" />
           </Campo>
           <Campo label="CPF / CNPJ *" erro={erros.cpf}>
             <MascaraInput tipo="cpfCnpj" value={form.cpf} onChange={v => set('cpf', v)} />
           </Campo>
-          <Campo label="Endereço *" erro={erros.addr}>
-            <input value={form.addr} onChange={e => set('addr', e.target.value)} placeholder="Rua, número" />
-          </Campo>
-          <Campo label="Bairro">
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Campo label="Endereço / Rua *" erro={erros.addr} style={{ flex: 3 }}>
+              <input value={form.addr} onChange={e => set('addr', e.target.value)} placeholder="Rua, Av., Travessa..." />
+            </Campo>
+            <Campo label="Número" style={{ flex: 1 }}>
+              <input value={form.numero} onChange={e => set('numero', e.target.value)} placeholder="Nº" />
+            </Campo>
+          </div>
+          <Campo label="Bairro *" erro={erros.bairro}>
             {ehObras && bairros.length > 0 ? (
-              <select value={form.bairro} onChange={e => set('bairro', e.target.value)}>
+              <select value={form.bairro} onChange={e => set('bairro', e.target.value)}
+                style={{ borderColor: erros.bairro ? '#B91C1C' : undefined }}>
                 <option value="">Selecione o bairro</option>
                 {(usuario.bairros || []).length > 0 && (
                   <optgroup label="Meus bairros">
@@ -174,19 +187,23 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
                 </optgroup>
               </select>
             ) : (
-              <input value={form.bairro} onChange={e => set('bairro', e.target.value)} placeholder="Bairro" />
+              <input value={form.bairro} onChange={e => set('bairro', e.target.value)} placeholder="Bairro *" />
             )}
           </Campo>
         </Secao>
 
         <Secao titulo="Infrações *">
-          {erros.infracoes && <div style={{ background: '#FEE2E2', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#B91C1C' }}>{erros.infracoes}</div>}
+          {erros.infracoes && (
+            <div style={{ background: '#FEE2E2', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#B91C1C', fontWeight: '600' }}>
+              ⚠️ {erros.infracoes}
+            </div>
+          )}
           {ehObras
             ? <InfracoesObras selecionadas={form.infracoes} onChange={v => set('infracoes', v)} mostrarValores={true} />
             : <InfracoesPosturas selecionadas={form.infracoes} onChange={v => set('infracoes', v)} mostrarValores={true} />
           }
           {totalMulta > 0 && (
-            <div style={{ background: '#FEE2E2', borderRadius: '10px', padding: '12px', textAlign: 'center', marginTop: '4px' }}>
+            <div style={{ background: '#FEE2E2', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
               <div style={{ fontSize: '0.78rem', color: '#B91C1C' }}>Multa total</div>
               <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#B91C1C' }}>
                 {ehObras ? `R$ ${totalMulta.toFixed(2).replace('.', ',')}` : `~${totalMulta.toFixed(0)} UFMs`}
@@ -195,19 +212,21 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
           )}
         </Secao>
 
-        <Secao titulo="Descrição">
-          <textarea value={form.descricao} onChange={e => set('descricao', e.target.value)}
-            placeholder="Descreva as circunstâncias..." rows={3} style={{ resize: 'vertical' }} />
+        <Secao titulo="Descrição *">
+          <Campo erro={erros.descricao}>
+            <textarea value={form.descricao} onChange={e => set('descricao', e.target.value)}
+              placeholder="Descreva as circunstâncias da infração (campo obrigatório)..." rows={4} style={{ resize: 'vertical' }} />
+          </Campo>
         </Secao>
 
         <Secao titulo="Testemunhas">
           <Campo label="Testemunha 1">
-            <input value={form.testemunha1} onChange={e => set('testemunha1', e.target.value)} placeholder="Nome" />
+            <input value={form.testemunha1} onChange={e => set('testemunha1', e.target.value)} placeholder="Nome da testemunha" />
           </Campo>
           <Campo label="Testemunha 2">
-            <input value={form.testemunha2} onChange={e => set('testemunha2', e.target.value)} placeholder="Nome" />
+            <input value={form.testemunha2} onChange={e => set('testemunha2', e.target.value)} placeholder="Nome da testemunha" />
           </Campo>
-          <Campo label="Obs. recusa de assinatura">
+          <Campo label="Obs. de recusa de assinatura">
             <textarea value={form.obs_recusa} onChange={e => set('obs_recusa', e.target.value)} rows={2} style={{ resize: 'vertical' }} />
           </Campo>
         </Secao>
@@ -252,12 +271,12 @@ function Secao({ titulo, children }) {
   )
 }
 
-function Campo({ label, children, erro }) {
+function Campo({ label, children, erro, style = {} }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...style }}>
       {label && <label style={{ fontSize: '0.82rem', fontWeight: '600', color: '#374151' }}>{label}</label>}
       {children}
-      {erro && <span style={{ fontSize: '0.72rem', color: '#B91C1C' }}>{erro}</span>}
+      {erro && <span style={{ fontSize: '0.72rem', color: '#B91C1C', fontWeight: '600' }}>⚠️ {erro}</span>}
     </div>
   )
 }
