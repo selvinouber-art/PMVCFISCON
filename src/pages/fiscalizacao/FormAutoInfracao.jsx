@@ -64,7 +64,7 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
     if (!form.addr.trim())           e.addr      = 'Endereço é obrigatório'
     if (!form.bairro)                e.bairro    = 'Bairro é obrigatório'
     if (form.infracoes.length === 0) e.infracoes = 'Selecione ao menos uma infração'
-    if (!form.descricao.trim())      e.descricao = 'Descrição das circunstâncias é obrigatória'
+    // descricao não é obrigatória no auto
     setErros(e)
     if (Object.keys(e).length > 0) {
       mostrarToast('Preencha todos os campos obrigatórios', 'erro')
@@ -212,10 +212,10 @@ export default function FormAutoInfracao({ usuario, mostrarToast, setPagina, not
           )}
         </Secao>
 
-        <Secao titulo="Descrição *">
-          <Campo erro={erros.descricao}>
+        <Secao titulo="Descrição (opcional)">
+          <Campo>
             <textarea value={form.descricao} onChange={e => set('descricao', e.target.value)}
-              placeholder="Descreva as circunstâncias da infração (campo obrigatório)..." rows={4} style={{ resize: 'vertical' }} />
+              placeholder="Descreva as circunstâncias da infração..." rows={4} style={{ resize: 'vertical' }} />
           </Campo>
         </Secao>
 
